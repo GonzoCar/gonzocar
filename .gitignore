@@ -1,0 +1,39 @@
+# Environment
+.env
+.env.local
+.env*.local
+
+# Project docs (local only)
+agents.md
+readme.md
+CLAUDE.md
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+venv/
+ENV/
+.venv/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Node (admin panel)
+node_modules/
+dist/
+.next/
+
+# Testing
+.pytest_cache/
+.coverage
+htmlcov/
