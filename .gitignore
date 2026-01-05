@@ -3,20 +3,28 @@
 .env.local
 .env*.local
 
-# Project docs (local only)
+# Project docs
 agents.md
 readme.md
-CLAUDE.md
+claude.md
+CHECKLIST.md
 
 # Python
+venv/
 __pycache__/
 *.py[cod]
 *$py.class
+*.pyc
 *.so
 .Python
-venv/
 ENV/
 .venv/
+
+# Database
+*.db
+
+# Alembic
+alembic/versions/*.pyc
 
 # IDE
 .vscode/
