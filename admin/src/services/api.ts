@@ -160,6 +160,17 @@ class ApiService {
         if (!response.ok) throw new Error('Failed to fetch status');
         return response.json();
     }
+
+    // SMS
+    async sendSms(phone: string, message: string) {
+        const response = await fetch(`${API_URL}/sms/send`, {
+            method: 'POST',
+            headers: this.headers(),
+            body: JSON.stringify({ phone, message }),
+        });
+        if (!response.ok) throw new Error('Failed to send SMS');
+        return response.json();
+    }
 }
 
 export const api = new ApiService();

@@ -1,7 +1,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.api.routes import auth, drivers, applications, payments, webhooks, status
+from app.api.routes import auth, drivers, applications, payments, webhooks, status, sms
 
 app = FastAPI(
     title="Gonzo Core",
@@ -24,6 +24,7 @@ app.include_router(drivers.router, prefix="/api")
 app.include_router(applications.router, prefix="/api")
 app.include_router(payments.router, prefix="/api")
 app.include_router(status.router, prefix="/api")
+app.include_router(sms.router, prefix="/api")
 app.include_router(webhooks.router)  # No prefix, webhook at root
 
 

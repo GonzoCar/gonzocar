@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import api from '../services/api';
+import SendModal, { getMessageTemplate } from '../components/SendModal';
 
 interface Comment {
     id: string;
@@ -26,6 +27,11 @@ export default function ApplicationDetail() {
     const [comment, setComment] = useState('');
     const [submitting, setSubmitting] = useState(false);
 
+    // Modal state
+    const [modalOpen, setModalOpen] = useState(false);
+    const [modalAction, setModalAction] = useState<string>('');
+    const [modalTitle, setModalTitle] = useState('');
+
     useEffect(() => {
         if (id) loadApplication();
     }, [id]);
@@ -41,11 +47,38 @@ export default function ApplicationDetail() {
         }
     }
 
-    async function handleStatusChange(status: string) {
+    function openActionModal(action: string) {
+        const titles: Record<string, string> = {
+            approved: 'Approve Application',
+            hold: 'Put on Hold',
+            declined: 'Decline Application',
+            onboarding: 'Onboard Driver',
+        };
+        setModalAction(action);
+        setModalTitle(titles[action] || 'Confirm Action');
+        setModalOpen(true);
+    }
+
+    async function handleConfirmAction(message: string) {
         if (!application) return;
         setSubmitting(true);
         try {
-            await api.updateApplicationStatus(application.id, status);
+            // Update status
+            await api.updateApplicationStatus(application.id, modalAction);
+
+            // Send SMS if there's a message and phone number
+            const formData = application.form_data as Record<string, string>;
+            const phone = formData.phone || formData.phone_number;
+            if (message.trim() && phone) {
+                try {
+                    await api.sendSms(phone, message);
+                } catch (smsError) {
+                    console.error('Failed to send SMS:', smsError);
+                    // Continue anyway - status was updated
+                }
+            }
+
+            setModalOpen(false);
             loadApplication();
         } catch (error) {
             console.error('Failed to update status:', error);
@@ -70,133 +103,320 @@ export default function ApplicationDetail() {
     }
 
     if (loading) {
-        return <div className="loading">Loading application</div>;
+        return <div style={{ padding: 'var(--space-4)', color: 'var(--dark-gray)' }}>Loading application...</div>;
     }
 
     if (!application) {
-        return <div className="empty-state">Application not found</div>;
+        return <div style={{ padding: 'var(--space-4)', color: 'var(--dark-gray)' }}>Application not found</div>;
     }
 
     const formData = application.form_data as Record<string, string>;
 
+    const statusColors: Record<string, { bg: string; text: string }> = {
+        pending: { bg: '#FFF3CD', text: '#856404' },
+        approved: { bg: '#D4EDDA', text: '#155724' },
+        declined: { bg: '#F8D7DA', text: '#721C24' },
+        hold: { bg: '#E2E3E5', text: '#383D41' },
+        onboarding: { bg: '#CCE5FF', text: '#004085' },
+    };
+
+    const statusStyle = statusColors[application.status] || statusColors.pending;
+
     return (
-        <div>
-            <div className="page-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-                <div>
-                    <button onClick={() => navigate('/applications')} className="btn btn-sm btn-secondary" style={{ marginBottom: '1rem' }}>
-                        Back to Applications
-                    </button>
-                    <h1>{formData.first_name} {formData.last_name}</h1>
-                    <p>Submitted on {new Date(application.created_at).toLocaleDateString()}</p>
+        <div style={{ padding: 'var(--space-4)' }}>
+            {/* Header */}
+            <div style={{ marginBottom: 'var(--space-4)' }}>
+                <button
+                    onClick={() => navigate('/applications')}
+                    style={{
+                        padding: 'var(--space-1) var(--space-2)',
+                        background: 'var(--light-gray)',
+                        border: '1px solid var(--medium-gray)',
+                        borderRadius: 'var(--radius-small)',
+                        color: 'var(--dark-gray)',
+                        marginBottom: 'var(--space-2)',
+                        cursor: 'pointer',
+                    }}
+                >
+                    Back to Applications
+                </button>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                    <div>
+                        <h1 style={{
+                            fontFamily: 'var(--font-heading)',
+                            fontSize: '1.75rem',
+                            color: 'var(--dark-gray)',
+                            marginBottom: 'var(--space-1)',
+                        }}>
+                            {formData.first_name} {formData.last_name}
+                        </h1>
+                        <p style={{ color: 'var(--dark-gray)', opacity: 0.7 }}>
+                            Submitted on {new Date(application.created_at).toLocaleDateString()}
+                        </p>
+                    </div>
+                    <span style={{
+                        padding: 'var(--space-1) var(--space-2)',
+                        background: statusStyle.bg,
+                        color: statusStyle.text,
+                        borderRadius: 'var(--radius-small)',
+                        fontWeight: 600,
+                        textTransform: 'capitalize',
+                    }}>
+                        {application.status}
+                    </span>
                 </div>
-                <span className={`badge ${application.status}`} style={{ fontSize: '0.875rem', padding: '0.5rem 1rem' }}>
-                    {application.status}
-                </span>
             </div>
 
-            <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: '1.5rem' }}>
-                <div>
-                    <div className="card" style={{ marginBottom: '1.5rem' }}>
-                        <h3 className="card-title" style={{ marginBottom: '1rem' }}>Application Details</h3>
-                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
-                            {Object.entries(formData).map(([key, value]) => (
-                                <div key={key}>
-                                    <div style={{ color: 'rgba(255,255,255,0.5)', fontSize: '0.75rem', textTransform: 'uppercase', marginBottom: '0.25rem' }}>
-                                        {key.replace(/_/g, ' ')}
-                                    </div>
-                                    <div style={{ color: '#fff' }}>{String(value) || '-'}</div>
+            {/* Main Grid - Application Details left, Actions + Comments right */}
+            <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: 'var(--space-4)' }}>
+                {/* Left Column - Application Details */}
+                <div style={{
+                    background: 'var(--white)',
+                    borderRadius: 'var(--radius-standard)',
+                    padding: 'var(--space-4)',
+                    boxShadow: '0 2px 8px rgba(0, 0, 0, 0.08)',
+                }}>
+                    <h3 style={{
+                        fontFamily: 'var(--font-heading)',
+                        fontSize: '1.125rem',
+                        color: 'var(--dark-gray)',
+                        marginBottom: 'var(--space-3)',
+                    }}>
+                        Application Details
+                    </h3>
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 'var(--space-3)' }}>
+                        {Object.entries(formData).map(([key, value]) => (
+                            <div key={key}>
+                                <div style={{
+                                    color: 'var(--dark-gray)',
+                                    opacity: 0.6,
+                                    fontSize: '0.75rem',
+                                    textTransform: 'uppercase',
+                                    marginBottom: '4px',
+                                }}>
+                                    {key.replace(/_/g, ' ')}
                                 </div>
-                            ))}
-                        </div>
-                    </div>
-
-                    <div className="card">
-                        <h3 className="card-title" style={{ marginBottom: '1rem' }}>Comments</h3>
-
-                        <form onSubmit={handleAddComment} style={{ marginBottom: '1.5rem' }}>
-                            <textarea
-                                value={comment}
-                                onChange={(e) => setComment(e.target.value)}
-                                placeholder="Add a comment..."
-                                style={{
-                                    width: '100%',
-                                    padding: '0.75rem',
-                                    background: 'rgba(255,255,255,0.05)',
-                                    border: '1px solid rgba(255,255,255,0.1)',
-                                    borderRadius: '8px',
-                                    color: '#fff',
-                                    resize: 'vertical',
-                                    minHeight: '80px',
-                                    marginBottom: '0.75rem',
-                                    boxSizing: 'border-box',
-                                }}
-                            />
-                            <button type="submit" className="btn btn-primary" disabled={submitting || !comment.trim()}>
-                                Add Comment
-                            </button>
-                        </form>
-
-                        {application.comments.length === 0 ? (
-                            <div className="empty-state" style={{ padding: '1rem' }}>No comments yet</div>
-                        ) : (
-                            <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-                                {application.comments.map((c) => (
-                                    <div key={c.id} style={{
-                                        padding: '1rem',
-                                        background: 'rgba(255,255,255,0.03)',
-                                        borderRadius: '8px',
-                                        border: '1px solid rgba(255,255,255,0.05)',
-                                    }}>
-                                        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.5rem' }}>
-                                            <span style={{ fontWeight: 500, color: '#667eea' }}>{c.staff_name || 'Staff'}</span>
-                                            <span style={{ color: 'rgba(255,255,255,0.4)', fontSize: '0.75rem' }}>
-                                                {new Date(c.created_at).toLocaleString()}
-                                            </span>
-                                        </div>
-                                        <p style={{ margin: 0, color: 'rgba(255,255,255,0.8)' }}>{c.content}</p>
-                                    </div>
-                                ))}
+                                <div style={{ color: 'var(--dark-gray)', fontWeight: 500 }}>
+                                    {String(value) || '-'}
+                                </div>
                             </div>
-                        )}
+                        ))}
                     </div>
                 </div>
 
-                <div>
-                    <div className="card">
-                        <h3 className="card-title" style={{ marginBottom: '1rem' }}>Actions</h3>
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+                {/* Right Column - Actions + Comments */}
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-3)' }}>
+                    {/* Actions Card */}
+                    <div style={{
+                        background: 'var(--white)',
+                        borderRadius: 'var(--radius-standard)',
+                        padding: 'var(--space-3)',
+                        boxShadow: '0 2px 8px rgba(0, 0, 0, 0.08)',
+                    }}>
+                        <h3 style={{
+                            fontFamily: 'var(--font-heading)',
+                            fontSize: '1rem',
+                            color: 'var(--dark-gray)',
+                            marginBottom: 'var(--space-2)',
+                        }}>
+                            Actions
+                        </h3>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-2)' }}>
                             {application.status === 'pending' && (
                                 <>
-                                    <button onClick={() => handleStatusChange('approved')} className="btn btn-success" disabled={submitting}>
+                                    <button
+                                        onClick={() => openActionModal('approved')}
+                                        style={{
+                                            padding: 'var(--space-2)',
+                                            background: 'var(--success-green)',
+                                            border: 'none',
+                                            borderRadius: 'var(--radius-small)',
+                                            color: 'var(--white)',
+                                            fontWeight: 600,
+                                            cursor: 'pointer',
+                                        }}
+                                    >
                                         Approve
                                     </button>
-                                    <button onClick={() => handleStatusChange('hold')} className="btn btn-secondary" disabled={submitting}>
+                                    <button
+                                        onClick={() => openActionModal('hold')}
+                                        style={{
+                                            padding: 'var(--space-2)',
+                                            background: 'var(--light-gray)',
+                                            border: '1px solid var(--medium-gray)',
+                                            borderRadius: 'var(--radius-small)',
+                                            color: 'var(--dark-gray)',
+                                            fontWeight: 600,
+                                            cursor: 'pointer',
+                                        }}
+                                    >
                                         Put on Hold
                                     </button>
-                                    <button onClick={() => handleStatusChange('declined')} className="btn btn-danger" disabled={submitting}>
+                                    <button
+                                        onClick={() => openActionModal('declined')}
+                                        style={{
+                                            padding: 'var(--space-2)',
+                                            background: 'var(--error-red)',
+                                            border: 'none',
+                                            borderRadius: 'var(--radius-small)',
+                                            color: 'var(--white)',
+                                            fontWeight: 600,
+                                            cursor: 'pointer',
+                                        }}
+                                    >
                                         Decline
                                     </button>
                                 </>
                             )}
                             {application.status === 'hold' && (
                                 <>
-                                    <button onClick={() => handleStatusChange('approved')} className="btn btn-success" disabled={submitting}>
+                                    <button
+                                        onClick={() => openActionModal('approved')}
+                                        style={{
+                                            padding: 'var(--space-2)',
+                                            background: 'var(--success-green)',
+                                            border: 'none',
+                                            borderRadius: 'var(--radius-small)',
+                                            color: 'var(--white)',
+                                            fontWeight: 600,
+                                            cursor: 'pointer',
+                                        }}
+                                    >
                                         Approve
                                     </button>
-                                    <button onClick={() => handleStatusChange('declined')} className="btn btn-danger" disabled={submitting}>
+                                    <button
+                                        onClick={() => openActionModal('declined')}
+                                        style={{
+                                            padding: 'var(--space-2)',
+                                            background: 'var(--error-red)',
+                                            border: 'none',
+                                            borderRadius: 'var(--radius-small)',
+                                            color: 'var(--white)',
+                                            fontWeight: 600,
+                                            cursor: 'pointer',
+                                        }}
+                                    >
                                         Decline
                                     </button>
                                 </>
                             )}
-                            {(application.status === 'approved' || application.status === 'declined') && (
-                                <p style={{ color: 'rgba(255,255,255,0.5)', textAlign: 'center' }}>
-                                    Application has been {application.status}
+                            {application.status === 'approved' && (
+                                <button
+                                    onClick={() => openActionModal('onboarding')}
+                                    style={{
+                                        padding: 'var(--space-2)',
+                                        background: 'var(--primary-blue)',
+                                        border: 'none',
+                                        borderRadius: 'var(--radius-small)',
+                                        color: 'var(--white)',
+                                        fontWeight: 600,
+                                        cursor: 'pointer',
+                                    }}
+                                >
+                                    Onboard Driver
+                                </button>
+                            )}
+                            {(application.status === 'declined' || application.status === 'onboarding') && (
+                                <p style={{ color: 'var(--dark-gray)', opacity: 0.6, textAlign: 'center', padding: 'var(--space-2)' }}>
+                                    Application has been {application.status === 'onboarding' ? 'onboarded' : application.status}
                                 </p>
                             )}
                         </div>
                     </div>
+
+                    {/* Comments Card */}
+                    <div style={{
+                        background: 'var(--white)',
+                        borderRadius: 'var(--radius-standard)',
+                        padding: 'var(--space-3)',
+                        boxShadow: '0 2px 8px rgba(0, 0, 0, 0.08)',
+                        flex: 1,
+                    }}>
+                        <h3 style={{
+                            fontFamily: 'var(--font-heading)',
+                            fontSize: '1rem',
+                            color: 'var(--dark-gray)',
+                            marginBottom: 'var(--space-2)',
+                        }}>
+                            Staff Comments
+                        </h3>
+
+                        <form onSubmit={handleAddComment} style={{ marginBottom: 'var(--space-3)' }}>
+                            <textarea
+                                value={comment}
+                                onChange={(e) => setComment(e.target.value)}
+                                placeholder="Add a comment..."
+                                style={{
+                                    width: '100%',
+                                    padding: 'var(--space-2)',
+                                    border: '1px solid var(--medium-gray)',
+                                    borderRadius: 'var(--radius-small)',
+                                    color: 'var(--dark-gray)',
+                                    resize: 'vertical',
+                                    minHeight: '80px',
+                                    marginBottom: 'var(--space-2)',
+                                    boxSizing: 'border-box',
+                                    fontSize: '0.875rem',
+                                }}
+                            />
+                            <button
+                                type="submit"
+                                disabled={submitting || !comment.trim()}
+                                style={{
+                                    padding: 'var(--space-1) var(--space-2)',
+                                    background: 'var(--primary-blue)',
+                                    border: 'none',
+                                    borderRadius: 'var(--radius-small)',
+                                    color: 'var(--white)',
+                                    fontWeight: 500,
+                                    cursor: submitting || !comment.trim() ? 'not-allowed' : 'pointer',
+                                    opacity: submitting || !comment.trim() ? 0.6 : 1,
+                                }}
+                            >
+                                Add Comment
+                            </button>
+                        </form>
+
+                        {application.comments.length === 0 ? (
+                            <p style={{ color: 'var(--dark-gray)', opacity: 0.5, fontSize: '0.875rem' }}>
+                                No comments yet
+                            </p>
+                        ) : (
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-2)' }}>
+                                {application.comments.map((c) => (
+                                    <div key={c.id} style={{
+                                        padding: 'var(--space-2)',
+                                        background: 'var(--light-gray)',
+                                        borderRadius: 'var(--radius-small)',
+                                    }}>
+                                        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>
+                                            <span style={{ fontWeight: 600, color: 'var(--primary-blue)', fontSize: '0.875rem' }}>
+                                                {c.staff_name || 'Staff'}
+                                            </span>
+                                            <span style={{ color: 'var(--dark-gray)', opacity: 0.5, fontSize: '0.75rem' }}>
+                                                {new Date(c.created_at).toLocaleString()}
+                                            </span>
+                                        </div>
+                                        <p style={{ margin: 0, color: 'var(--dark-gray)', fontSize: '0.875rem' }}>
+                                            {c.content}
+                                        </p>
+                                    </div>
+                                ))}
+                            </div>
+                        )}
+                    </div>
                 </div>
             </div>
+
+            {/* Send Modal */}
+            <SendModal
+                isOpen={modalOpen}
+                title={modalTitle}
+                defaultMessage={getMessageTemplate(modalAction)}
+                onCancel={() => setModalOpen(false)}
+                onConfirm={handleConfirmAction}
+                loading={submitting}
+            />
         </div>
     );
 }

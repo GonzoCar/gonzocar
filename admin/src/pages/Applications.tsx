@@ -40,88 +40,155 @@ export default function Applications() {
         return acc;
     }, {} as Record<string, number>);
 
+    const statusColors: Record<string, { bg: string; text: string }> = {
+        pending: { bg: '#FFF3CD', text: '#856404' },
+        approved: { bg: '#D4EDDA', text: '#155724' },
+        declined: { bg: '#F8D7DA', text: '#721C24' },
+        hold: { bg: '#E2E3E5', text: '#383D41' },
+        onboarding: { bg: '#CCE5FF', text: '#004085' },
+    };
+
     return (
-        <div>
-            <div className="page-header">
-                <h1>Vetting Hub</h1>
-                <p>Review and process driver applications</p>
+        <div style={{ padding: 'var(--space-4)' }}>
+            {/* Header */}
+            <div style={{ marginBottom: 'var(--space-4)' }}>
+                <h1 style={{
+                    fontFamily: 'var(--font-heading)',
+                    fontSize: '1.75rem',
+                    color: 'var(--dark-gray)',
+                    marginBottom: 'var(--space-1)',
+                }}>
+                    Vetting Hub
+                </h1>
+                <p style={{ color: 'var(--dark-gray)', opacity: 0.7 }}>
+                    Review and process driver applications
+                </p>
             </div>
 
-            <div className="stats-grid" style={{ marginBottom: '1.5rem' }}>
-                <button
-                    onClick={() => setFilter('')}
-                    className={`stat-card ${!filter ? 'primary' : ''}`}
-                    style={{ cursor: 'pointer', textAlign: 'left', border: !filter ? '1px solid rgba(102, 126, 234, 0.3)' : undefined }}
-                >
-                    <div className="stat-label">All</div>
-                    <div className="stat-value">{applications.length}</div>
-                </button>
-                <button
-                    onClick={() => setFilter('pending')}
-                    className={`stat-card ${filter === 'pending' ? 'warning' : ''}`}
-                    style={{ cursor: 'pointer', textAlign: 'left' }}
-                >
-                    <div className="stat-label">Pending</div>
-                    <div className="stat-value">{statusCounts['pending'] || 0}</div>
-                </button>
-                <button
-                    onClick={() => setFilter('approved')}
-                    className={`stat-card ${filter === 'approved' ? 'success' : ''}`}
-                    style={{ cursor: 'pointer', textAlign: 'left' }}
-                >
-                    <div className="stat-label">Approved</div>
-                    <div className="stat-value">{statusCounts['approved'] || 0}</div>
-                </button>
-                <button
-                    onClick={() => setFilter('declined')}
-                    className={`stat-card ${filter === 'declined' ? 'danger' : ''}`}
-                    style={{ cursor: 'pointer', textAlign: 'left' }}
-                >
-                    <div className="stat-label">Declined</div>
-                    <div className="stat-value">{statusCounts['declined'] || 0}</div>
-                </button>
+            {/* Filter Buttons */}
+            <div style={{
+                display: 'grid',
+                gridTemplateColumns: 'repeat(4, 1fr)',
+                gap: 'var(--space-2)',
+                marginBottom: 'var(--space-4)',
+            }}>
+                {[
+                    { key: '', label: 'All', count: applications.length },
+                    { key: 'pending', label: 'Pending', count: statusCounts['pending'] || 0 },
+                    { key: 'approved', label: 'Approved', count: statusCounts['approved'] || 0 },
+                    { key: 'declined', label: 'Declined', count: statusCounts['declined'] || 0 },
+                ].map((item) => (
+                    <button
+                        key={item.key}
+                        onClick={() => setFilter(item.key)}
+                        style={{
+                            padding: 'var(--space-3)',
+                            background: filter === item.key ? 'var(--primary-blue)' : 'var(--white)',
+                            border: `1px solid ${filter === item.key ? 'var(--primary-blue)' : 'var(--medium-gray)'}`,
+                            borderRadius: 'var(--radius-standard)',
+                            cursor: 'pointer',
+                            textAlign: 'left',
+                        }}
+                    >
+                        <div style={{
+                            fontSize: '0.75rem',
+                            color: filter === item.key ? 'rgba(255,255,255,0.8)' : 'var(--dark-gray)',
+                            opacity: filter === item.key ? 1 : 0.6,
+                            marginBottom: '4px',
+                        }}>
+                            {item.label}
+                        </div>
+                        <div style={{
+                            fontSize: '1.5rem',
+                            fontWeight: 700,
+                            fontFamily: 'var(--font-heading)',
+                            color: filter === item.key ? 'var(--white)' : 'var(--dark-gray)',
+                        }}>
+                            {item.count}
+                        </div>
+                    </button>
+                ))}
             </div>
 
-            <div className="card">
+            {/* Table */}
+            <div style={{
+                background: 'var(--white)',
+                borderRadius: 'var(--radius-standard)',
+                boxShadow: '0 2px 8px rgba(0, 0, 0, 0.08)',
+                overflow: 'hidden',
+            }}>
                 {loading ? (
-                    <div className="loading">Loading applications</div>
+                    <div style={{ padding: 'var(--space-4)', textAlign: 'center', color: 'var(--dark-gray)' }}>
+                        Loading applications...
+                    </div>
                 ) : applications.length === 0 ? (
-                    <div className="empty-state">
-                        <p>No applications found</p>
+                    <div style={{ padding: 'var(--space-4)', textAlign: 'center', color: 'var(--dark-gray)', opacity: 0.6 }}>
+                        No applications found
                     </div>
                 ) : (
-                    <div className="table-container">
-                        <table>
-                            <thead>
-                                <tr>
-                                    <th>Applicant</th>
-                                    <th>Email</th>
-                                    <th>Phone</th>
-                                    <th>Submitted</th>
-                                    <th>Status</th>
-                                    <th></th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                {applications.map((app) => (
-                                    <tr key={app.id}>
-                                        <td style={{ fontWeight: 500, color: '#fff' }}>
+                    <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                        <thead>
+                            <tr style={{ background: 'var(--light-gray)' }}>
+                                <th style={{ padding: 'var(--space-2) var(--space-3)', textAlign: 'left', color: 'var(--dark-gray)', fontWeight: 600, fontSize: '0.875rem' }}>Applicant</th>
+                                <th style={{ padding: 'var(--space-2) var(--space-3)', textAlign: 'left', color: 'var(--dark-gray)', fontWeight: 600, fontSize: '0.875rem' }}>Email</th>
+                                <th style={{ padding: 'var(--space-2) var(--space-3)', textAlign: 'left', color: 'var(--dark-gray)', fontWeight: 600, fontSize: '0.875rem' }}>Phone</th>
+                                <th style={{ padding: 'var(--space-2) var(--space-3)', textAlign: 'left', color: 'var(--dark-gray)', fontWeight: 600, fontSize: '0.875rem' }}>Submitted</th>
+                                <th style={{ padding: 'var(--space-2) var(--space-3)', textAlign: 'left', color: 'var(--dark-gray)', fontWeight: 600, fontSize: '0.875rem' }}>Status</th>
+                                <th style={{ padding: 'var(--space-2) var(--space-3)', textAlign: 'right' }}></th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {applications.map((app) => {
+                                const statusStyle = statusColors[app.status] || statusColors.pending;
+                                return (
+                                    <tr key={app.id} style={{ borderTop: '1px solid var(--light-gray)' }}>
+                                        <td style={{ padding: 'var(--space-2) var(--space-3)', fontWeight: 500, color: 'var(--dark-gray)' }}>
                                             {app.form_data?.first_name} {app.form_data?.last_name}
                                         </td>
-                                        <td>{app.form_data?.email}</td>
-                                        <td>{app.form_data?.phone}</td>
-                                        <td>{new Date(app.created_at).toLocaleDateString()}</td>
-                                        <td><span className={`badge ${app.status}`}>{app.status}</span></td>
-                                        <td>
-                                            <Link to={`/applications/${app.id}`} className="btn btn-sm btn-secondary">
+                                        <td style={{ padding: 'var(--space-2) var(--space-3)', color: 'var(--dark-gray)' }}>
+                                            {app.form_data?.email}
+                                        </td>
+                                        <td style={{ padding: 'var(--space-2) var(--space-3)', color: 'var(--dark-gray)' }}>
+                                            {app.form_data?.phone}
+                                        </td>
+                                        <td style={{ padding: 'var(--space-2) var(--space-3)', color: 'var(--dark-gray)' }}>
+                                            {new Date(app.created_at).toLocaleDateString()}
+                                        </td>
+                                        <td style={{ padding: 'var(--space-2) var(--space-3)' }}>
+                                            <span style={{
+                                                padding: '4px 8px',
+                                                background: statusStyle.bg,
+                                                color: statusStyle.text,
+                                                borderRadius: 'var(--radius-small)',
+                                                fontWeight: 500,
+                                                fontSize: '0.75rem',
+                                                textTransform: 'capitalize',
+                                            }}>
+                                                {app.status}
+                                            </span>
+                                        </td>
+                                        <td style={{ padding: 'var(--space-2) var(--space-3)', textAlign: 'right' }}>
+                                            <Link
+                                                to={`/applications/${app.id}`}
+                                                style={{
+                                                    padding: '6px 12px',
+                                                    background: 'var(--light-gray)',
+                                                    border: '1px solid var(--medium-gray)',
+                                                    borderRadius: 'var(--radius-small)',
+                                                    color: 'var(--dark-gray)',
+                                                    textDecoration: 'none',
+                                                    fontSize: '0.875rem',
+                                                    fontWeight: 500,
+                                                }}
+                                            >
                                                 Review
                                             </Link>
                                         </td>
                                     </tr>
-                                ))}
-                            </tbody>
-                        </table>
-                    </div>
+                                );
+                            })}
+                        </tbody>
+                    </table>
                 )}
             </div>
         </div>

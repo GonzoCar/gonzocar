@@ -28,117 +28,219 @@ export default function Settings() {
         }
     }
 
-    function getStatusBadge(s: { status: string; message: string } | undefined) {
-        if (!s) return <span className="badge pending">Loading...</span>;
+    const statusColors: Record<string, { bg: string; text: string }> = {
+        ok: { bg: '#D4EDDA', text: '#155724' },
+        warning: { bg: '#FFF3CD', text: '#856404' },
+        error: { bg: '#F8D7DA', text: '#721C24' },
+    };
 
-        const badgeClass = s.status === 'ok' ? 'approved' :
-            s.status === 'warning' ? 'hold' : 'declined';
-        return <span className={`badge ${badgeClass}`}>{s.message}</span>;
+    function getStatusBadge(s: { status: string; message: string } | undefined) {
+        if (!s) {
+            return (
+                <span style={{
+                    padding: '4px 8px',
+                    background: '#E2E3E5',
+                    color: '#383D41',
+                    borderRadius: 'var(--radius-small)',
+                    fontSize: '0.75rem',
+                    fontWeight: 500,
+                }}>
+                    Loading...
+                </span>
+            );
+        }
+
+        const statusStyle = statusColors[s.status] || statusColors.warning;
+        return (
+            <span style={{
+                padding: '4px 8px',
+                background: statusStyle.bg,
+                color: statusStyle.text,
+                borderRadius: 'var(--radius-small)',
+                fontSize: '0.75rem',
+                fontWeight: 500,
+            }}>
+                {s.message}
+            </span>
+        );
     }
 
     return (
-        <div>
-            <div className="page-header">
-                <h1>Settings</h1>
-                <p>System configuration and staff management</p>
+        <div style={{ padding: 'var(--space-4)' }}>
+            {/* Header */}
+            <div style={{ marginBottom: 'var(--space-4)' }}>
+                <h1 style={{
+                    fontFamily: 'var(--font-heading)',
+                    fontSize: '1.75rem',
+                    color: 'var(--dark-gray)',
+                    marginBottom: 'var(--space-1)',
+                }}>
+                    Settings
+                </h1>
+                <p style={{ color: 'var(--dark-gray)', opacity: 0.7 }}>
+                    System configuration and staff management
+                </p>
             </div>
 
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1.5rem' }}>
-                <div className="card">
-                    <h3 className="card-title" style={{ marginBottom: '1rem' }}>Your Profile</h3>
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 'var(--space-4)' }}>
+                {/* Your Profile */}
+                <div style={{
+                    background: 'var(--white)',
+                    borderRadius: 'var(--radius-standard)',
+                    padding: 'var(--space-3)',
+                    boxShadow: '0 2px 8px rgba(0, 0, 0, 0.08)',
+                }}>
+                    <h3 style={{
+                        fontFamily: 'var(--font-heading)',
+                        fontSize: '1rem',
+                        color: 'var(--dark-gray)',
+                        marginBottom: 'var(--space-3)',
+                    }}>
+                        Your Profile
+                    </h3>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-3)' }}>
                         <div>
-                            <div style={{ color: '#666', fontSize: '0.75rem', textTransform: 'uppercase', marginBottom: '0.25rem' }}>
+                            <div style={{ color: 'var(--dark-gray)', opacity: 0.6, fontSize: '0.75rem', textTransform: 'uppercase', marginBottom: '4px' }}>
                                 Name
                             </div>
-                            <div style={{ color: '#333', fontSize: '1.1rem' }}>{user?.name}</div>
+                            <div style={{ color: 'var(--dark-gray)', fontSize: '1.1rem', fontWeight: 500 }}>{user?.name}</div>
                         </div>
                         <div>
-                            <div style={{ color: '#666', fontSize: '0.75rem', textTransform: 'uppercase', marginBottom: '0.25rem' }}>
+                            <div style={{ color: 'var(--dark-gray)', opacity: 0.6, fontSize: '0.75rem', textTransform: 'uppercase', marginBottom: '4px' }}>
                                 Email
                             </div>
-                            <div style={{ color: '#333' }}>{user?.email}</div>
+                            <div style={{ color: 'var(--dark-gray)' }}>{user?.email}</div>
                         </div>
                         <div>
-                            <div style={{ color: '#666', fontSize: '0.75rem', textTransform: 'uppercase', marginBottom: '0.25rem' }}>
+                            <div style={{ color: 'var(--dark-gray)', opacity: 0.6, fontSize: '0.75rem', textTransform: 'uppercase', marginBottom: '4px' }}>
                                 Role
                             </div>
-                            <span className={`badge ${user?.role === 'admin' ? 'approved' : 'pending'}`} style={{ textTransform: 'capitalize' }}>
+                            <span style={{
+                                padding: '4px 8px',
+                                background: user?.role === 'admin' ? '#D4EDDA' : '#FFF3CD',
+                                color: user?.role === 'admin' ? '#155724' : '#856404',
+                                borderRadius: 'var(--radius-small)',
+                                fontSize: '0.75rem',
+                                fontWeight: 500,
+                                textTransform: 'capitalize',
+                            }}>
                                 {user?.role}
                             </span>
                         </div>
                     </div>
                 </div>
 
-                <div className="card">
-                    <h3 className="card-title" style={{ marginBottom: '1rem' }}>
-                        System Status
+                {/* System Status */}
+                <div style={{
+                    background: 'var(--white)',
+                    borderRadius: 'var(--radius-standard)',
+                    padding: 'var(--space-3)',
+                    boxShadow: '0 2px 8px rgba(0, 0, 0, 0.08)',
+                }}>
+                    <div style={{ display: 'flex', alignItems: 'center', marginBottom: 'var(--space-3)' }}>
+                        <h3 style={{
+                            fontFamily: 'var(--font-heading)',
+                            fontSize: '1rem',
+                            color: 'var(--dark-gray)',
+                        }}>
+                            System Status
+                        </h3>
                         {!loading && (
                             <button
                                 onClick={loadStatus}
                                 style={{
-                                    marginLeft: '1rem',
-                                    background: '#f0f0f0',
-                                    border: '1px solid #ccc',
-                                    borderRadius: '4px',
-                                    padding: '0.25rem 0.5rem',
-                                    color: '#1E4D8C',
+                                    marginLeft: 'var(--space-2)',
+                                    background: 'var(--light-gray)',
+                                    border: '1px solid var(--medium-gray)',
+                                    borderRadius: 'var(--radius-small)',
+                                    padding: '4px 8px',
+                                    color: 'var(--primary-blue)',
                                     cursor: 'pointer',
-                                    fontSize: '0.75rem'
+                                    fontSize: '0.75rem',
                                 }}
                             >
                                 Refresh
                             </button>
                         )}
-                    </h3>
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                    </div>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-2)' }}>
                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                            <span style={{ color: '#333' }}>Backend API</span>
-                            <span className="badge approved">Connected</span>
+                            <span style={{ color: 'var(--dark-gray)' }}>Backend API</span>
+                            <span style={{
+                                padding: '4px 8px',
+                                background: '#D4EDDA',
+                                color: '#155724',
+                                borderRadius: 'var(--radius-small)',
+                                fontSize: '0.75rem',
+                                fontWeight: 500,
+                            }}>
+                                Connected
+                            </span>
                         </div>
                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                            <span style={{ color: '#333' }}>Database</span>
+                            <span style={{ color: 'var(--dark-gray)' }}>Database</span>
                             {getStatusBadge(status?.database)}
                         </div>
                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                            <span style={{ color: '#333' }}>Gmail API</span>
+                            <span style={{ color: 'var(--dark-gray)' }}>Gmail API</span>
                             {getStatusBadge(status?.gmail)}
                         </div>
                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                            <span style={{ color: '#333' }}>OpenPhone SMS</span>
+                            <span style={{ color: 'var(--dark-gray)' }}>OpenPhone SMS</span>
                             {getStatusBadge(status?.openphone)}
                         </div>
                     </div>
                 </div>
 
-                <div className="card" style={{ gridColumn: 'span 2' }}>
-                    <h3 className="card-title" style={{ marginBottom: '1rem' }}>Cron Jobs</h3>
-                    <div className="table-container">
-                        <table>
-                            <thead>
-                                <tr>
-                                    <th>Job</th>
-                                    <th>Schedule</th>
-                                    <th>Description</th>
-                                    <th>Command</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                <tr>
-                                    <td style={{ fontWeight: 500, color: '#333' }}>Payment Parser</td>
-                                    <td><code style={{ background: '#f0f0f0', padding: '0.25rem 0.5rem', borderRadius: '4px', fontSize: '0.75rem', color: '#333' }}>*/5 * * * *</code></td>
-                                    <td>Parse payment emails from Gmail every 5 minutes</td>
-                                    <td><code style={{ color: '#1E4D8C', fontSize: '0.75rem' }}>python scripts/parse_payments.py</code></td>
-                                </tr>
-                                <tr>
-                                    <td style={{ fontWeight: 500, color: '#333' }}>Midnight Billing</td>
-                                    <td><code style={{ background: '#f0f0f0', padding: '0.25rem 0.5rem', borderRadius: '4px', fontSize: '0.75rem', color: '#333' }}>0 0 * * *</code></td>
-                                    <td>Create daily debits, check late payments, send SMS</td>
-                                    <td><code style={{ color: '#1E4D8C', fontSize: '0.75rem' }}>python scripts/midnight_billing.py</code></td>
-                                </tr>
-                            </tbody>
-                        </table>
+                {/* Cron Jobs */}
+                <div style={{
+                    gridColumn: 'span 2',
+                    background: 'var(--white)',
+                    borderRadius: 'var(--radius-standard)',
+                    boxShadow: '0 2px 8px rgba(0, 0, 0, 0.08)',
+                    overflow: 'hidden',
+                }}>
+                    <div style={{ padding: 'var(--space-3)', borderBottom: '1px solid var(--light-gray)' }}>
+                        <h3 style={{
+                            fontFamily: 'var(--font-heading)',
+                            fontSize: '1rem',
+                            color: 'var(--dark-gray)',
+                        }}>
+                            Cron Jobs
+                        </h3>
                     </div>
+                    <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                        <thead>
+                            <tr style={{ background: 'var(--light-gray)' }}>
+                                <th style={{ padding: 'var(--space-2) var(--space-3)', textAlign: 'left', color: 'var(--dark-gray)', fontWeight: 600, fontSize: '0.75rem' }}>Job</th>
+                                <th style={{ padding: 'var(--space-2) var(--space-3)', textAlign: 'left', color: 'var(--dark-gray)', fontWeight: 600, fontSize: '0.75rem' }}>Schedule</th>
+                                <th style={{ padding: 'var(--space-2) var(--space-3)', textAlign: 'left', color: 'var(--dark-gray)', fontWeight: 600, fontSize: '0.75rem' }}>Description</th>
+                                <th style={{ padding: 'var(--space-2) var(--space-3)', textAlign: 'left', color: 'var(--dark-gray)', fontWeight: 600, fontSize: '0.75rem' }}>Command</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr style={{ borderTop: '1px solid var(--light-gray)' }}>
+                                <td style={{ padding: 'var(--space-2) var(--space-3)', fontWeight: 500, color: 'var(--dark-gray)' }}>Payment Parser</td>
+                                <td style={{ padding: 'var(--space-2) var(--space-3)' }}>
+                                    <code style={{ background: 'var(--light-gray)', padding: '4px 8px', borderRadius: '4px', fontSize: '0.75rem', color: 'var(--dark-gray)' }}>*/5 * * * *</code>
+                                </td>
+                                <td style={{ padding: 'var(--space-2) var(--space-3)', color: 'var(--dark-gray)', fontSize: '0.875rem' }}>Parse payment emails from Gmail every 5 minutes</td>
+                                <td style={{ padding: 'var(--space-2) var(--space-3)' }}>
+                                    <code style={{ color: 'var(--primary-blue)', fontSize: '0.75rem' }}>python scripts/parse_payments.py</code>
+                                </td>
+                            </tr>
+                            <tr style={{ borderTop: '1px solid var(--light-gray)' }}>
+                                <td style={{ padding: 'var(--space-2) var(--space-3)', fontWeight: 500, color: 'var(--dark-gray)' }}>Midnight Billing</td>
+                                <td style={{ padding: 'var(--space-2) var(--space-3)' }}>
+                                    <code style={{ background: 'var(--light-gray)', padding: '4px 8px', borderRadius: '4px', fontSize: '0.75rem', color: 'var(--dark-gray)' }}>0 0 * * *</code>
+                                </td>
+                                <td style={{ padding: 'var(--space-2) var(--space-3)', color: 'var(--dark-gray)', fontSize: '0.875rem' }}>Create daily debits, check late payments, send SMS</td>
+                                <td style={{ padding: 'var(--space-2) var(--space-3)' }}>
+                                    <code style={{ color: 'var(--primary-blue)', fontSize: '0.75rem' }}>python scripts/midnight_billing.py</code>
+                                </td>
+                            </tr>
+                        </tbody>
+                    </table>
                 </div>
             </div>
         </div>
