@@ -48,19 +48,19 @@ export default function Settings() {
                     <h3 className="card-title" style={{ marginBottom: '1rem' }}>Your Profile</h3>
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
                         <div>
-                            <div style={{ color: 'rgba(255,255,255,0.5)', fontSize: '0.75rem', textTransform: 'uppercase', marginBottom: '0.25rem' }}>
+                            <div style={{ color: '#666', fontSize: '0.75rem', textTransform: 'uppercase', marginBottom: '0.25rem' }}>
                                 Name
                             </div>
-                            <div style={{ color: '#fff', fontSize: '1.1rem' }}>{user?.name}</div>
+                            <div style={{ color: '#333', fontSize: '1.1rem' }}>{user?.name}</div>
                         </div>
                         <div>
-                            <div style={{ color: 'rgba(255,255,255,0.5)', fontSize: '0.75rem', textTransform: 'uppercase', marginBottom: '0.25rem' }}>
+                            <div style={{ color: '#666', fontSize: '0.75rem', textTransform: 'uppercase', marginBottom: '0.25rem' }}>
                                 Email
                             </div>
-                            <div style={{ color: '#fff' }}>{user?.email}</div>
+                            <div style={{ color: '#333' }}>{user?.email}</div>
                         </div>
                         <div>
-                            <div style={{ color: 'rgba(255,255,255,0.5)', fontSize: '0.75rem', textTransform: 'uppercase', marginBottom: '0.25rem' }}>
+                            <div style={{ color: '#666', fontSize: '0.75rem', textTransform: 'uppercase', marginBottom: '0.25rem' }}>
                                 Role
                             </div>
                             <span className={`badge ${user?.role === 'admin' ? 'approved' : 'pending'}`} style={{ textTransform: 'capitalize' }}>
@@ -78,11 +78,11 @@ export default function Settings() {
                                 onClick={loadStatus}
                                 style={{
                                     marginLeft: '1rem',
-                                    background: 'rgba(255,255,255,0.1)',
-                                    border: 'none',
+                                    background: '#f0f0f0',
+                                    border: '1px solid #ccc',
                                     borderRadius: '4px',
                                     padding: '0.25rem 0.5rem',
-                                    color: '#667eea',
+                                    color: '#1E4D8C',
                                     cursor: 'pointer',
                                     fontSize: '0.75rem'
                                 }}
@@ -93,19 +93,19 @@ export default function Settings() {
                     </h3>
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                            <span style={{ color: 'rgba(255,255,255,0.7)' }}>Backend API</span>
+                            <span style={{ color: '#333' }}>Backend API</span>
                             <span className="badge approved">Connected</span>
                         </div>
                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                            <span style={{ color: 'rgba(255,255,255,0.7)' }}>Database</span>
+                            <span style={{ color: '#333' }}>Database</span>
                             {getStatusBadge(status?.database)}
                         </div>
                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                            <span style={{ color: 'rgba(255,255,255,0.7)' }}>Gmail API</span>
+                            <span style={{ color: '#333' }}>Gmail API</span>
                             {getStatusBadge(status?.gmail)}
                         </div>
                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                            <span style={{ color: 'rgba(255,255,255,0.7)' }}>OpenPhone SMS</span>
+                            <span style={{ color: '#333' }}>OpenPhone SMS</span>
                             {getStatusBadge(status?.openphone)}
                         </div>
                     </div>
@@ -125,16 +125,16 @@ export default function Settings() {
                             </thead>
                             <tbody>
                                 <tr>
-                                    <td style={{ fontWeight: 500, color: '#fff' }}>Payment Parser</td>
-                                    <td><code style={{ background: 'rgba(255,255,255,0.1)', padding: '0.25rem 0.5rem', borderRadius: '4px', fontSize: '0.75rem' }}>*/5 * * * *</code></td>
+                                    <td style={{ fontWeight: 500, color: '#333' }}>Payment Parser</td>
+                                    <td><code style={{ background: '#f0f0f0', padding: '0.25rem 0.5rem', borderRadius: '4px', fontSize: '0.75rem', color: '#333' }}>*/5 * * * *</code></td>
                                     <td>Parse payment emails from Gmail every 5 minutes</td>
-                                    <td><code style={{ color: '#667eea', fontSize: '0.75rem' }}>python scripts/parse_payments.py</code></td>
+                                    <td><code style={{ color: '#1E4D8C', fontSize: '0.75rem' }}>python scripts/parse_payments.py</code></td>
                                 </tr>
                                 <tr>
-                                    <td style={{ fontWeight: 500, color: '#fff' }}>Midnight Billing</td>
-                                    <td><code style={{ background: 'rgba(255,255,255,0.1)', padding: '0.25rem 0.5rem', borderRadius: '4px', fontSize: '0.75rem' }}>0 0 * * *</code></td>
+                                    <td style={{ fontWeight: 500, color: '#333' }}>Midnight Billing</td>
+                                    <td><code style={{ background: '#f0f0f0', padding: '0.25rem 0.5rem', borderRadius: '4px', fontSize: '0.75rem', color: '#333' }}>0 0 * * *</code></td>
                                     <td>Create daily debits, check late payments, send SMS</td>
-                                    <td><code style={{ color: '#667eea', fontSize: '0.75rem' }}>python scripts/midnight_billing.py</code></td>
+                                    <td><code style={{ color: '#1E4D8C', fontSize: '0.75rem' }}>python scripts/midnight_billing.py</code></td>
                                 </tr>
                             </tbody>
                         </table>
