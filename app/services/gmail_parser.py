@@ -169,12 +169,44 @@ class CashAppParser:
                 else:
                     sender_name = name_part
             
+            # 2. Parse Body (Fallback or "Payment received" subject)
+            if amount == 0.0 or sender_name == "Unknown":
+                # Pattern 1: "You were sent $120 by Riva D Brewer"
+                body_match = re.search(r'You were sent \$([\d,]+\.?\d*) by ([^\.\n<]+)', body, re.IGNORECASE)
+                
+                # Pattern 2: "Riva D Brewer paid you $120"
+                if not body_match:
+                    body_match = re.search(r'([^\.\n<]+) paid you \$([\d,]+\.?\d*)', body, re.IGNORECASE)
+                    if body_match:
+                        # Swap groups for this pattern
+                        amount = float(body_match.group(2).replace(',', ''))
+                        sender_name = body_match.group(1).strip()
+                
+                if body_match and amount == 0.0:
+                    amount = float(body_match.group(1).replace(',', ''))
+                    sender_name = body_match.group(2).strip()
+
             # Clean up sender name if it captured "Cash App: " prefix
             if sender_name.lower().startswith('cash app:'):
                 sender_name = sender_name[9:].strip()
+            
+            # 2.1 Extract Memo from Body if not found yet
+            if not memo:
+                # Look for "For car payment" in HTML or text
+                # HTML often has: class="text-subtle profile-description"...>For car payment</td>
+                memo_match = re.search(r'profile-description"[^>]*>\s*For\s+([^<]+)', body, re.IGNORECASE)
+                if memo_match:
+                    memo = memo_match.group(1).strip()
+                else:
+                    # Text fallback - risky if not anchored well, but try simple "For ..."
+                    # The text content often says: "You were sent $XX by Name. ... For Note"
+                    # But in the sample plain text it's not explicitly "For Note".
+                    # Let's rely on the HTML structure saw in the sample for now.
+                    pass
 
-            # 2. Transaction ID
-            tx_match = re.search(r'#([A-Z0-9-]+)', body)
+            # 3. Transaction ID
+            # Look for #D-XXXXXXXX
+            tx_match = re.search(r'#([A-Z0-9-]{4,})', body)
             transaction_id = tx_match.group(1) if tx_match else None
             
             return ParsedPayment(
