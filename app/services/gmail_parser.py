@@ -117,6 +117,10 @@ class ZelleParser:
             if memo and memo.lower() == 'n/a':
                 memo = None
             
+            # Validate
+            if amount == 0.0 or sender_name == "Unknown":
+                return None
+
             return ParsedPayment(
                 source='zelle',
                 amount=amount,
@@ -142,6 +146,13 @@ class CashAppParser:
     def parse(msg: email.message.Message, body: str) -> Optional[ParsedPayment]:
         try:
             subject = msg.get('Subject', '')
+            
+            # Explicit Ignore Patterns
+            if subject.lower().startswith("you sent"):
+                return None
+            if "privacy notice" in subject.lower():
+                return None
+
             sender_name = "Unknown"
             amount = 0.0
             memo = None
@@ -198,16 +209,16 @@ class CashAppParser:
                 if memo_match:
                     memo = memo_match.group(1).strip()
                 else:
-                    # Text fallback - risky if not anchored well, but try simple "For ..."
-                    # The text content often says: "You were sent $XX by Name. ... For Note"
-                    # But in the sample plain text it's not explicitly "For Note".
-                    # Let's rely on the HTML structure saw in the sample for now.
                     pass
 
             # 3. Transaction ID
             # Look for #D-XXXXXXXX
             tx_match = re.search(r'#([A-Z0-9-]{4,})', body)
             transaction_id = tx_match.group(1) if tx_match else None
+            
+            # Validate
+            if amount == 0.0 or sender_name == "Unknown":
+                return None
             
             return ParsedPayment(
                 source='cashapp',
@@ -238,6 +249,11 @@ class VenmoParser:
     def parse(msg: email.message.Message, body: str) -> Optional[ParsedPayment]:
         try:
             subject = msg.get('Subject', '')
+            
+            # Explicit ignore
+            if subject.lower().startswith("you paid"):
+                return None
+
             sender_name = "Unknown"
             amount = 0.0
             
@@ -260,6 +276,10 @@ class VenmoParser:
             if not memo:
                 note_html = re.search(r'transaction-note[^>]*>([^<]+)<', body)
                 memo = note_html.group(1).strip() if note_html else None
+
+            # Validate
+            if amount == 0.0 or sender_name == "Unknown":
+                return None
 
             return ParsedPayment(
                 source='venmo',
@@ -316,6 +336,10 @@ class ChimeParser:
                 if len(candidate) < 50 and 'transaction' not in candidate.lower():
                     memo = candidate
             
+            # Validate
+            if amount == 0.0 or sender_name == "Unknown":
+                return None
+
             return ParsedPayment(
                 source='chime',
                 amount=amount,
@@ -365,6 +389,10 @@ class StripeParser:
             tx_match = re.search(r'(pi_[A-Za-z0-9]+)', body)
             transaction_id = tx_match.group(1) if tx_match else None
             
+            # Validate
+            if amount == 0.0 or sender_name == "Unknown":
+                return None
+
             return ParsedPayment(
                 source='stripe',
                 amount=amount,

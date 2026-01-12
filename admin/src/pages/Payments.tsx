@@ -201,7 +201,14 @@ export default function Payments() {
                                             {payment.memo || '-'}
                                         </td>
                                         <td style={{ padding: 'var(--space-2) var(--space-3)', color: 'var(--dark-gray)', fontSize: '0.875rem' }}>
-                                            {new Date(payment.received_at).toLocaleDateString()}
+                                            {new Date(payment.received_at).toLocaleString('en-US', {
+                                                month: 'numeric',
+                                                day: 'numeric',
+                                                year: 'numeric',
+                                                hour: 'numeric',
+                                                minute: 'numeric',
+                                                hour12: true
+                                            })}
                                         </td>
                                         <td style={{ padding: 'var(--space-2) var(--space-3)', textAlign: 'right', fontWeight: 600, color: 'var(--success-green)' }}>
                                             ${payment.amount.toFixed(2)}
