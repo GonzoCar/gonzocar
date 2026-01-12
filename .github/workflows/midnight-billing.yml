@@ -1,0 +1,31 @@
+name: Midnight Billing
+
+on:
+  schedule:
+    # Every day at midnight UTC
+    - cron: '0 0 * * *'
+  workflow_dispatch: # Allow manual trigger
+
+env:
+  DATABASE_URL: ${{ secrets.DATABASE_URL }}
+  OPENPHONE_API_KEY: ${{ secrets.OPENPHONE_API_KEY }}
+  OPENPHONE_PHONE_NUMBER: ${{ secrets.OPENPHONE_PHONE_NUMBER }}
+
+jobs:
+  billing:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+      
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+      
+      - name: Run midnight billing
+        run: python scripts/midnight_billing.py
