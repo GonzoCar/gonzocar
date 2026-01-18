@@ -352,11 +352,7 @@ class ChimeParser:
             if amount == 0.0 or sender_name == "Unknown":
                 return None
 
-            return ParsedPayment(
-                source='chime',
-                amount=amount,
-                sender_name=sender_name,
-                sender_identifier=None,
+
             # Transaction ID - Fallback to Email Message-ID since Chime doesn't consistently provide one in body
             transaction_id = None
             msg_id = msg.get('Message-ID')

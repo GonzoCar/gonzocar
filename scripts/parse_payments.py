@@ -105,6 +105,7 @@ def store_payment(db: Session, payment: ParsedPayment, gmail_id: str = None) -> 
     )
     
     db.add(payment_raw)
+    db.flush()  # Ensure it's visible to subsequent is_duplicate checks within the same transaction
     
     # If matched, create ledger entry
     if driver:
@@ -136,7 +137,7 @@ def process_email(db: Session, raw_email: bytes, gmail_id: str = None) -> bool:
     return result is not None
 
 
-def run_with_gmail():
+def run_with_gmail(hours: int = 1):
     """Fetch and process emails from Gmail API."""
     try:
         from app.services.gmail_service import GmailService
@@ -156,12 +157,12 @@ def run_with_gmail():
         print("Run: python app/services/gmail_service.py")
         return
     
-    print(f"[{datetime.now()}] Starting payment email parser")
+    print(f"[{datetime.now()}] Starting payment email parser (looking back {hours} hours)")
     print("Connecting to Gmail API...")
     
     try:
         gmail = GmailService()
-        emails = gmail.fetch_emails(since_hours=1, max_results=50)
+        emails = gmail.fetch_emails(since_hours=hours, max_results=50)
         
         print(f"Found {len(emails)} payment emails")
         
@@ -217,9 +218,18 @@ def run_with_local_files(directory: str):
 
 
 if __name__ == "__main__":
-    if len(sys.argv) > 1:
-        # Process local files (testing mode)
+    if len(sys.argv) > 1 and sys.argv[1].endswith('.eml'):
+        # Process local directory/files (legacy support)
         run_with_local_files(sys.argv[1])
     else:
+        # Check for --hours argument
+        hours = 1
+        if '--hours' in sys.argv:
+            try:
+                idx = sys.argv.index('--hours')
+                hours = int(sys.argv[idx + 1])
+            except (ValueError, IndexError):
+                print("Invalid --hours argument, defaulting to 1 hour")
+        
         # Production mode: fetch from Gmail
-        run_with_gmail()
+        run_with_gmail(hours=hours)
