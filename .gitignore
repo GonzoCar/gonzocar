@@ -38,6 +38,9 @@ alembic/versions/*.pyc
 *.swp
 *.swo
 
+# Agent
+.agent/
+
 # OS
 .DS_Store
 Thumbs.db
