@@ -218,10 +218,11 @@ export default function ApplicationDetail() {
                             }
 
                             // Handle URLs (Render clickable links)
-                            // Check if value is a string and contains http (even if not at start, e.g. "foo.jpg, https://...")
-                            if (typeof value === 'string' && value.includes('http')) {
+                            // Cast to string to handle arrays or strings
+                            const valStr = String(value);
+                            if (valStr.includes('http')) {
                                 // Split by comma or newline to handle multiple files
-                                const urls = value.split(/[\n,]+/).map(u => u.trim()).filter(u => u.startsWith('http'));
+                                const urls = valStr.split(/[\n,]+/).map(u => u.trim()).filter(u => u.startsWith('http'));
 
                                 if (urls.length > 0) {
                                     displayValue = (
