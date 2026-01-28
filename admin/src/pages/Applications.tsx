@@ -143,7 +143,34 @@ export default function Applications() {
                                 return (
                                     <tr key={app.id} style={{ borderTop: '1px solid var(--light-gray)' }}>
                                         <td style={{ padding: 'var(--space-2) var(--space-3)', fontWeight: 500, color: 'var(--dark-gray)' }}>
-                                            {app.form_data?.first_name} {app.form_data?.last_name}
+                                            {(() => {
+                                                const fd = app.form_data || {};
+                                                // 1. Check top level first/last
+                                                if (fd.first_name || fd.last_name) {
+                                                    return `${fd.first_name || ''} ${fd.last_name || ''}`;
+                                                }
+                                                // 2. Search for any key containing 'names' (case insensitive)
+                                                // e.g. names, Names, Driver_Names, etc.
+                                                let namesObj: any = null;
+                                                const keys = Object.keys(fd);
+                                                for (const key of keys) {
+                                                    if (key.toLowerCase().includes('name') && typeof (fd as any)[key] === 'object') {
+                                                        namesObj = (fd as any)[key];
+                                                        break;
+                                                    }
+                                                }
+
+                                                if (namesObj) {
+                                                    const f = namesObj.first_name || namesObj.First_Name || namesObj.first || '';
+                                                    const l = namesObj.last_name || namesObj.Last_Name || namesObj.last || '';
+                                                    if (f || l) return `${f} ${l}`;
+                                                }
+
+                                                // 3. Last resort: check email
+                                                if (fd.email) return <span style={{ opacity: 0.5 }}>{fd.email}</span>;
+
+                                                return 'Unknown Applicant';
+                                            })()}
                                         </td>
                                         <td style={{ padding: 'var(--space-2) var(--space-3)', color: 'var(--dark-gray)' }}>
                                             {app.form_data?.email}
