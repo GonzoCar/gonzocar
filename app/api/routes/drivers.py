@@ -89,11 +89,21 @@ def get_driver(
     if not driver:
         raise HTTPException(status_code=404, detail="Driver not found")
     
+    # Get linked application info (full profile)
+    # We prioritize 'approved' applications, or take the latest one
+    from app.models import Application
+    application = db.query(Application).filter(
+        Application.driver_id == driver_id
+    ).order_by(Application.created_at.desc()).first()
+    
+    application_info = application.form_data if application else None
+
     return {
         **driver.__dict__,
         "billing_type": driver.billing_type.value,
         "billing_rate": float(driver.billing_rate),
-        "balance": _calculate_balance(db, driver.id)
+        "balance": _calculate_balance(db, driver.id),
+        "application_info": application_info
     }
 
 

@@ -63,6 +63,7 @@ class DriverResponse(DriverBase):
     created_at: datetime
     updated_at: datetime
     balance: Optional[float] = None
+    application_info: Optional[dict] = None
 
     class Config:
         from_attributes = True

@@ -12,7 +12,7 @@ interface Stats {
 interface Application {
     id: string;
     status: string;
-    form_data: { first_name?: string; last_name?: string; email?: string };
+    form_data: Record<string, any>;
     created_at: string;
 }
 
@@ -189,7 +189,26 @@ export default function Dashboard() {
                                         <tr key={app.id} style={{ borderTop: '1px solid var(--light-gray)' }}>
                                             <td style={{ padding: 'var(--space-2) var(--space-3)' }}>
                                                 <Link to={`/applications/${app.id}`} style={{ color: 'var(--primary-blue)', textDecoration: 'none', fontWeight: 500 }}>
-                                                    {app.form_data?.first_name} {app.form_data?.last_name}
+                                                    {(() => {
+                                                        const fd = app.form_data || {};
+                                                        if (fd.first_name || fd.last_name) return `${fd.first_name || ''} ${fd.last_name || ''}`;
+
+                                                        // Deep search for names
+                                                        let namesObj: any = null;
+                                                        for (const key of Object.keys(fd)) {
+                                                            if (key.toLowerCase().includes('name') && typeof (fd as any)[key] === 'object') {
+                                                                namesObj = (fd as any)[key];
+                                                                break;
+                                                            }
+                                                        }
+                                                        if (namesObj) {
+                                                            const f = namesObj.first_name || namesObj.First_Name || namesObj.first || '';
+                                                            const l = namesObj.last_name || namesObj.Last_Name || namesObj.last || '';
+                                                            if (f || l) return `${f} ${l}`;
+                                                        }
+
+                                                        return fd.email || 'Unknown Applicant';
+                                                    })()}
                                                 </Link>
                                             </td>
                                             <td style={{ padding: 'var(--space-2) var(--space-3)', color: 'var(--dark-gray)', fontSize: '0.875rem' }}>
@@ -265,7 +284,10 @@ export default function Dashboard() {
                                     <tr key={driver.id} style={{ borderTop: '1px solid var(--light-gray)' }}>
                                         <td style={{ padding: 'var(--space-2) var(--space-3)' }}>
                                             <Link to={`/drivers/${driver.id}`} style={{ color: 'var(--primary-blue)', textDecoration: 'none', fontWeight: 500 }}>
-                                                {driver.first_name} {driver.last_name}
+                                                {driver.first_name || driver.last_name
+                                                    ? `${driver.first_name} ${driver.last_name}`.trim()
+                                                    : <span style={{ opacity: 0.6, fontStyle: 'italic' }}>{driver.email?.split('@')[0] || driver.email}</span>
+                                                }
                                             </Link>
                                         </td>
                                         <td style={{

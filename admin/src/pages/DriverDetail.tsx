@@ -13,6 +13,7 @@ interface Driver {
     billing_active: boolean;
     balance: number;
     created_at: string;
+    application_info?: Record<string, any>;
 }
 
 interface LedgerEntry {
@@ -199,6 +200,136 @@ export default function DriverDetail() {
                     </div>
                 </div>
             </div>
+
+            {/* Full Profile (from Application) */}
+            {driver.application_info && Object.keys(driver.application_info).length > 0 && (
+                <div style={{
+                    background: 'var(--white)',
+                    borderRadius: 'var(--radius-standard)',
+                    padding: 'var(--space-4)',
+                    boxShadow: '0 2px 8px rgba(0, 0, 0, 0.08)',
+                    marginBottom: 'var(--space-4)',
+                }}>
+                    <h3 style={{
+                        fontFamily: 'var(--font-heading)',
+                        fontSize: '1.125rem',
+                        color: 'var(--dark-gray)',
+                        marginBottom: 'var(--space-3)',
+                    }}>
+                        Full Profile
+                    </h3>
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 'var(--space-3)' }}>
+                        {Object.entries(driver.application_info).map(([key, value]) => {
+                            // Smart Value Formatting
+                            let displayValue: React.ReactNode = '-';
+                            let stringValue = '';
+                            let isSpecialObject = false;
+
+                            if (value === null || value === undefined || value === '') {
+                                displayValue = '-';
+                                isSpecialObject = true;
+                            } else if (typeof value === 'object') {
+                                // Handle Objects (Address, Name, Submission, etc.)
+                                const obj = value as Record<string, unknown>;
+
+                                // 0. Arrays (Merge to string for URL processing)
+                                if (Array.isArray(value)) {
+                                    stringValue = value.map(String).join(', ');
+                                }
+                                // 1. Name Object
+                                else if ((obj.first_name || obj.last_name || obj.First_Name || obj.Last_Name)) {
+                                    const first = (obj.first_name || obj.First_Name || obj.first || '') as string;
+                                    const last = (obj.last_name || obj.Last_Name || obj.last || '') as string;
+                                    displayValue = `${first} ${last}`.trim();
+                                    isSpecialObject = true;
+                                }
+                                // 2. Address Object (Fluent Forms style)
+                                else if (obj.address_line_1 || obj.city || obj.state || obj.zip) {
+                                    const addr1 = (obj.address_line_1 || '') as string;
+                                    const addr2 = (obj.address_line_2 || '') as string;
+                                    const city = (obj.city || '') as string;
+                                    const state = (obj.state || '') as string;
+                                    const zip = (obj.zip || '') as string;
+                                    displayValue = [addr1, addr2, city, state, zip].filter(Boolean).join(', ');
+                                    isSpecialObject = true;
+                                }
+                                // 3. Generic Object (Submission metadata, etc.)
+                                else {
+                                    // Try to find a meaningful label or ID
+                                    const label = obj.label || obj.name || obj.id || obj.title;
+                                    if (label && typeof label === 'string') {
+                                        stringValue = label;
+                                    } else {
+                                        // Fallback: prettier JSON or comma-joined values if flat object
+                                        const values = Object.values(obj).filter(v => typeof v === 'string' || typeof v === 'number');
+                                        if (values.length > 0 && values.length < 5) {
+                                            stringValue = values.join(', ');
+                                        } else {
+                                            stringValue = JSON.stringify(value);
+                                        }
+                                    }
+                                }
+                            } else {
+                                // Primitives
+                                stringValue = String(value);
+                            }
+
+                            // If not a special object (Name/Address), check for URLs in stringValue
+                            if (!isSpecialObject) {
+                                if (stringValue.includes('http')) {
+                                    // Handle URLs
+                                    // Split by comma, newline or space to handle multiple files/links
+                                    const urls = stringValue.split(/[\n,\s]+/).map(u => u.trim()).filter(u => u.startsWith('http'));
+
+                                    if (urls.length > 0) {
+                                        displayValue = (
+                                            <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                                                {urls.map((url, idx) => (
+                                                    <a
+                                                        key={idx}
+                                                        href={url}
+                                                        target="_blank"
+                                                        rel="noopener noreferrer"
+                                                        style={{
+                                                            color: 'var(--primary-blue)',
+                                                            textDecoration: 'underline',
+                                                            wordBreak: 'break-all'
+                                                        }}
+                                                        onClick={(e) => e.stopPropagation()}
+                                                    >
+                                                        View Document {urls.length > 1 ? idx + 1 : ''}
+                                                    </a>
+                                                ))}
+                                            </div>
+                                        );
+                                    } else {
+                                        displayValue = stringValue;
+                                    }
+                                } else {
+                                    displayValue = stringValue;
+                                }
+                            }
+
+                            return (
+                                <div key={key}>
+                                    <div style={{
+                                        color: 'var(--dark-gray)',
+                                        opacity: 0.6,
+                                        fontSize: '0.75rem',
+                                        textTransform: 'uppercase',
+                                        marginBottom: '4px',
+                                    }}>
+                                        {key.replace(/_/g, ' ')}
+                                    </div>
+                                    <div style={{ color: 'var(--dark-gray)', fontWeight: 500 }}>
+                                        {displayValue}
+                                    </div>
+                                </div>
+                            );
+                        })}
+                    </div>
+                </div>
+            )}
 
             {/* Two Column Layout */}
             <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: 'var(--space-4)' }}>
