@@ -67,7 +67,7 @@ export default function ApplicationDetail() {
             await api.updateApplicationStatus(application.id, modalAction);
 
             // Send SMS if there's a message and phone number
-            const formData = application.form_data as Record<string, string>;
+            const formData = application.form_data as Record<string, any>;
             const phone = formData.phone || formData.phone_number;
             if (message.trim() && phone) {
                 try {
@@ -110,7 +110,7 @@ export default function ApplicationDetail() {
         return <div style={{ padding: 'var(--space-4)', color: 'var(--dark-gray)' }}>Application not found</div>;
     }
 
-    const formData = application.form_data as Record<string, string>;
+    const formData = application.form_data as Record<string, any>;
 
     const statusColors: Record<string, { bg: string; text: string }> = {
         pending: { bg: '#FFF3CD', text: '#856404' },
@@ -202,18 +202,26 @@ export default function ApplicationDetail() {
                         {Object.entries(formData).map(([key, value]) => {
                             // Smart Value Formatting
                             let displayValue: React.ReactNode = '-';
+                            let stringValue = '';
+                            let isSpecialObject = false;
 
                             if (value === null || value === undefined || value === '') {
                                 displayValue = '-';
+                                isSpecialObject = true;
                             } else if (typeof value === 'object') {
                                 // Handle Objects (Address, Name, Submission, etc.)
                                 const obj = value as Record<string, unknown>;
 
+                                // 0. Arrays (Merge to string for URL processing)
+                                if (Array.isArray(value)) {
+                                    stringValue = value.map(String).join(', ');
+                                }
                                 // 1. Name Object
-                                if ((obj.first_name || obj.last_name || obj.First_Name || obj.Last_Name)) {
+                                else if ((obj.first_name || obj.last_name || obj.First_Name || obj.Last_Name)) {
                                     const first = (obj.first_name || obj.First_Name || obj.first || '') as string;
                                     const last = (obj.last_name || obj.Last_Name || obj.last || '') as string;
                                     displayValue = `${first} ${last}`.trim();
+                                    isSpecialObject = true;
                                 }
                                 // 2. Address Object (Fluent Forms style)
                                 else if (obj.address_line_1 || obj.city || obj.state || obj.zip) {
@@ -223,31 +231,35 @@ export default function ApplicationDetail() {
                                     const state = (obj.state || '') as string;
                                     const zip = (obj.zip || '') as string;
                                     displayValue = [addr1, addr2, city, state, zip].filter(Boolean).join(', ');
+                                    isSpecialObject = true;
                                 }
-                                // 3. Generic Object (Submission metadata, etc.) - Strings preferred over JSON
+                                // 3. Generic Object (Submission metadata, etc.)
                                 else {
                                     // Try to find a meaningful label or ID
                                     const label = obj.label || obj.name || obj.id || obj.title;
                                     if (label && typeof label === 'string') {
-                                        displayValue = label;
+                                        stringValue = label;
                                     } else {
                                         // Fallback: prettier JSON or comma-joined values if flat object
                                         const values = Object.values(obj).filter(v => typeof v === 'string' || typeof v === 'number');
                                         if (values.length > 0 && values.length < 5) {
-                                            displayValue = values.join(', ');
+                                            stringValue = values.join(', ');
                                         } else {
-                                            displayValue = JSON.stringify(value);
+                                            stringValue = JSON.stringify(value);
                                         }
                                     }
                                 }
                             } else {
-                                // Handle Primitives (Strings, Numbers)
-                                // Cast to string to handle checking for URLs
-                                const valStr = String(value);
+                                // Primitives
+                                stringValue = String(value);
+                            }
 
-                                if (valStr.includes('http')) {
+                            // If not a special object (Name/Address), check for URLs in stringValue
+                            if (!isSpecialObject) {
+                                if (stringValue.includes('http')) {
                                     // Handle URLs
-                                    const urls = valStr.split(/[\n,]+/).map(u => u.trim()).filter(u => u.startsWith('http'));
+                                    // Split by comma, newline or space to handle multiple files/links
+                                    const urls = stringValue.split(/[\n,\s]+/).map(u => u.trim()).filter(u => u.startsWith('http'));
 
                                     if (urls.length > 0) {
                                         displayValue = (
@@ -268,13 +280,14 @@ export default function ApplicationDetail() {
                                                         View Document {urls.length > 1 ? idx + 1 : ''}
                                                     </a>
                                                 ))}
+                                                {/* If there's text mixed with URLs, show it too, or just simplify to links */}
                                             </div>
                                         );
                                     } else {
-                                        displayValue = valStr;
+                                        displayValue = stringValue;
                                     }
                                 } else {
-                                    displayValue = valStr;
+                                    displayValue = stringValue;
                                 }
                             }
 
