@@ -9,7 +9,7 @@ on:
 env:
   DATABASE_URL: ${{ secrets.DATABASE_URL }}
   GMAIL_CREDENTIALS: ${{ secrets.GMAIL_CREDENTIALS }}
-  GMAIL_TOKEN: ${{ secrets.GMAIL_TOKEN_2 }}
+  GMAIL_TOKEN: ${{ secrets.GMAIL_TOKEN }}
 
 jobs:
   parse-payments:
@@ -30,7 +30,7 @@ jobs:
       - name: Create Gmail credentials files
         run: |
           echo '${{ secrets.GMAIL_CREDENTIALS }}' > credentials.json
-          echo '${{ secrets.GMAIL_TOKEN_2 }}' > token.json
+          echo '${{ secrets.GMAIL_TOKEN }}' > token.json
       
       - name: Run payment parser
         run: python scripts/parse_payments.py
