@@ -37,7 +37,7 @@ class StaffResponse(StaffBase):
 class DriverBase(BaseModel):
     first_name: str
     last_name: str
-    email: EmailStr
+    email: str
     phone: str
     billing_type: str = "daily"
     billing_rate: float
@@ -50,7 +50,7 @@ class DriverCreate(DriverBase):
 class DriverUpdate(BaseModel):
     first_name: Optional[str] = None
     last_name: Optional[str] = None
-    email: Optional[EmailStr] = None
+    email: Optional[str] = None
     phone: Optional[str] = None
     billing_type: Optional[str] = None
     billing_rate: Optional[float] = None
