@@ -23,10 +23,6 @@ class Settings(BaseSettings):
     # Stripe
     stripe_api_key: str = ""
     
-    # GitHub (for triggering workflows)
-    github_token: str = ""
-    github_repo: str = "GonzoCar/gonzocar"
-    
     class Config:
         env_file = ".env.local"
         env_file_encoding = "utf-8"

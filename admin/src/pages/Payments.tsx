@@ -35,8 +35,6 @@ export default function Payments() {
     const [loading, setLoading] = useState(true);
     const [assigning, setAssigning] = useState<string | null>(null);
     const [selectedDriver, setSelectedDriver] = useState<string>('');
-    const [triggering, setTriggering] = useState(false);
-    const [triggerStatus, setTriggerStatus] = useState<string | null>(null);
 
     useEffect(() => {
         loadData();
@@ -71,24 +69,6 @@ export default function Payments() {
         }
     }
 
-    async function handleTriggerParse() {
-        setTriggering(true);
-        setTriggerStatus(null);
-        try {
-            await api.triggerParsing();
-            setTriggerStatus('Parsing triggered! Refreshing in 5s...');
-            setTimeout(() => {
-                setTriggerStatus(null);
-                loadData();
-            }, 5000);
-        } catch (error) {
-            setTriggerStatus('Failed to trigger parsing');
-            console.error('Failed to trigger:', error);
-        } finally {
-            setTriggering(false);
-        }
-    }
-
     const sourceColors: Record<string, { bg: string; text: string }> = {
         zelle: { bg: '#EEF2FF', text: '#4F46E5' },
         venmo: { bg: '#DBEAFE', text: '#2563EB' },
@@ -100,43 +80,18 @@ export default function Payments() {
     return (
         <div style={{ padding: 'var(--space-4)' }}>
             {/* Header */}
-            <div style={{ marginBottom: 'var(--space-4)', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-                <div>
-                    <h1 style={{
-                        fontFamily: 'var(--font-heading)',
-                        fontSize: '1.75rem',
-                        color: 'var(--dark-gray)',
-                        marginBottom: 'var(--space-1)',
-                    }}>
-                        Payments
-                    </h1>
-                    <p style={{ color: 'var(--dark-gray)', opacity: 0.7 }}>
-                        Review and assign unrecognized payments
-                    </p>
-                </div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}>
-                    {triggerStatus && (
-                        <span style={{ fontSize: '0.875rem', color: triggerStatus.includes('Failed') ? 'var(--error-red)' : 'var(--success-green)' }}>
-                            {triggerStatus}
-                        </span>
-                    )}
-                    <button
-                        onClick={handleTriggerParse}
-                        disabled={triggering}
-                        style={{
-                            padding: 'var(--space-2) var(--space-3)',
-                            background: triggering ? 'var(--medium-gray)' : 'var(--primary-blue)',
-                            border: 'none',
-                            borderRadius: 'var(--radius-small)',
-                            color: 'var(--white)',
-                            fontWeight: 600,
-                            cursor: triggering ? 'not-allowed' : 'pointer',
-                            fontSize: '0.875rem',
-                        }}
-                    >
-                        {triggering ? 'Triggering...' : '⚡ Trigger Parsing'}
-                    </button>
-                </div>
+            <div style={{ marginBottom: 'var(--space-4)' }}>
+                <h1 style={{
+                    fontFamily: 'var(--font-heading)',
+                    fontSize: '1.75rem',
+                    color: 'var(--dark-gray)',
+                    marginBottom: 'var(--space-1)',
+                }}>
+                    Payments
+                </h1>
+                <p style={{ color: 'var(--dark-gray)', opacity: 0.7 }}>
+                    Review and assign unrecognized payments
+                </p>
             </div>
 
             {/* Stats Grid */}

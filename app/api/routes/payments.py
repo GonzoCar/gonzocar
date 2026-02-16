@@ -5,10 +5,8 @@ Endpoints for managing payment records:
 - List unrecognized (unmatched) payments
 - Assign payment to driver (creates alias + ledger entry)
 - Payment stats
-- Trigger parse workflow
 """
 
-import httpx
 from uuid import UUID
 from datetime import datetime
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -16,7 +14,6 @@ from sqlalchemy.orm import Session
 from sqlalchemy import func
 
 from app.api.deps import get_db, get_current_user
-from app.core.config import get_settings
 from app.models import Staff, PaymentRaw, Driver, Alias, Ledger, AliasType
 from app.schemas import PaymentResponse, PaymentAssign
 
@@ -217,37 +214,3 @@ def get_payment(
             detail="Payment not found"
         )
     return payment
-
-
-@router.post("/trigger-parse")
-async def trigger_parse(
-    current_user: Staff = Depends(get_current_user)
-):
-    """Trigger the parse-payments GitHub Actions workflow."""
-    settings = get_settings()
-    
-    if not settings.github_token:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="GitHub token not configured"
-        )
-    
-    url = f"https://api.github.com/repos/{settings.github_repo}/actions/workflows/parse-payments.yml/dispatches"
-    
-    async with httpx.AsyncClient() as client:
-        response = await client.post(
-            url,
-            headers={
-                "Authorization": f"token {settings.github_token}",
-                "Accept": "application/vnd.github.v3+json",
-            },
-            json={"ref": "main"}
-        )
-    
-    if response.status_code == 204:
-        return {"status": "triggered", "message": "Payment parsing workflow started"}
-    else:
-        raise HTTPException(
-            status_code=response.status_code,
-            detail=f"GitHub API error: {response.text}"
-        )
