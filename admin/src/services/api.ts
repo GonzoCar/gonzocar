@@ -162,6 +162,16 @@ class ApiService {
         return response.json();
     }
 
+    // Trigger Parsing
+    async triggerParsing() {
+        const response = await fetch(`${API_URL}/payments/trigger-parse`, {
+            method: 'POST',
+            headers: this.headers(),
+        });
+        if (!response.ok) throw new Error('Failed to trigger parsing');
+        return response.json();
+    }
+
     // SMS
     async sendSms(phone: string, message: string) {
         const response = await fetch(`${API_URL}/sms/send`, {
