@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import api from '../services/api';
+import { getFieldLabel, sortFormEntries, HIDDEN_FIELDS } from '../utils/formFields';
 
 interface Driver {
     id: string;
@@ -219,7 +220,7 @@ export default function DriverDetail() {
                         Full Profile
                     </h3>
                     <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 'var(--space-3)' }}>
-                        {Object.entries(driver.application_info).map(([key, value]) => {
+                        {sortFormEntries(Object.entries(driver.application_info).filter(([key]) => !HIDDEN_FIELDS.has(key))).map(([key, value]) => {
                             // Smart Value Formatting
                             let displayValue: React.ReactNode = '-';
                             let stringValue = '';
@@ -229,21 +230,17 @@ export default function DriverDetail() {
                                 displayValue = '-';
                                 isSpecialObject = true;
                             } else if (typeof value === 'object') {
-                                // Handle Objects (Address, Name, Submission, etc.)
                                 const obj = value as Record<string, unknown>;
 
-                                // 0. Arrays (Merge to string for URL processing)
                                 if (Array.isArray(value)) {
                                     stringValue = value.map(String).join(', ');
                                 }
-                                // 1. Name Object
                                 else if ((obj.first_name || obj.last_name || obj.First_Name || obj.Last_Name)) {
                                     const first = (obj.first_name || obj.First_Name || obj.first || '') as string;
                                     const last = (obj.last_name || obj.Last_Name || obj.last || '') as string;
                                     displayValue = `${first} ${last}`.trim();
                                     isSpecialObject = true;
                                 }
-                                // 2. Address Object (Fluent Forms style)
                                 else if (obj.address_line_1 || obj.city || obj.state || obj.zip) {
                                     const addr1 = (obj.address_line_1 || '') as string;
                                     const addr2 = (obj.address_line_2 || '') as string;
@@ -253,34 +250,21 @@ export default function DriverDetail() {
                                     displayValue = [addr1, addr2, city, state, zip].filter(Boolean).join(', ');
                                     isSpecialObject = true;
                                 }
-                                // 3. Generic Object (Submission metadata, etc.)
                                 else {
-                                    // Try to find a meaningful label or ID
-                                    const label = obj.label || obj.name || obj.id || obj.title;
-                                    if (label && typeof label === 'string') {
-                                        stringValue = label;
+                                    const values = Object.values(obj).filter(v => typeof v === 'string' || typeof v === 'number');
+                                    if (values.length > 0 && values.length < 5) {
+                                        stringValue = values.join(', ');
                                     } else {
-                                        // Fallback: prettier JSON or comma-joined values if flat object
-                                        const values = Object.values(obj).filter(v => typeof v === 'string' || typeof v === 'number');
-                                        if (values.length > 0 && values.length < 5) {
-                                            stringValue = values.join(', ');
-                                        } else {
-                                            stringValue = JSON.stringify(value);
-                                        }
+                                        stringValue = JSON.stringify(value);
                                     }
                                 }
                             } else {
-                                // Primitives
                                 stringValue = String(value);
                             }
 
-                            // If not a special object (Name/Address), check for URLs in stringValue
                             if (!isSpecialObject) {
                                 if (stringValue.includes('http')) {
-                                    // Handle URLs
-                                    // Split by comma, newline or space to handle multiple files/links
                                     const urls = stringValue.split(/[\n,\s]+/).map(u => u.trim()).filter(u => u.startsWith('http'));
-
                                     if (urls.length > 0) {
                                         displayValue = (
                                             <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
@@ -319,7 +303,7 @@ export default function DriverDetail() {
                                         textTransform: 'uppercase',
                                         marginBottom: '4px',
                                     }}>
-                                        {key.replace(/_/g, ' ')}
+                                        {getFieldLabel(key)}
                                     </div>
                                     <div style={{ color: 'var(--dark-gray)', fontWeight: 500 }}>
                                         {displayValue}
