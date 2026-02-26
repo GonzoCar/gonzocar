@@ -15,10 +15,32 @@ interface Driver {
     created_at: string;
 }
 
+interface NewDriverForm {
+    first_name: string;
+    last_name: string;
+    email: string;
+    phone: string;
+    billing_type: string;
+    billing_rate: string;
+}
+
+const emptyForm: NewDriverForm = {
+    first_name: '',
+    last_name: '',
+    email: '',
+    phone: '',
+    billing_type: 'daily',
+    billing_rate: '',
+};
+
 export default function Drivers() {
     const [drivers, setDrivers] = useState<Driver[]>([]);
     const [loading, setLoading] = useState(true);
     const [search, setSearch] = useState('');
+    const [showModal, setShowModal] = useState(false);
+    const [form, setForm] = useState<NewDriverForm>(emptyForm);
+    const [submitting, setSubmitting] = useState(false);
+    const [error, setError] = useState('');
 
     useEffect(() => {
         loadDrivers();
@@ -35,12 +57,84 @@ export default function Drivers() {
         }
     }
 
+    function openModal() {
+        setForm(emptyForm);
+        setError('');
+        setShowModal(true);
+    }
+
+    function closeModal() {
+        setShowModal(false);
+        setForm(emptyForm);
+        setError('');
+    }
+
+    async function handleSubmit(e: React.FormEvent) {
+        e.preventDefault();
+        setError('');
+
+        if (!form.first_name.trim() || !form.last_name.trim()) {
+            setError('First name and last name are required');
+            return;
+        }
+        if (!form.email.trim()) {
+            setError('Email is required');
+            return;
+        }
+        if (!form.phone.trim()) {
+            setError('Phone is required');
+            return;
+        }
+        if (!form.billing_rate || isNaN(Number(form.billing_rate)) || Number(form.billing_rate) <= 0) {
+            setError('Billing rate must be a positive number');
+            return;
+        }
+
+        setSubmitting(true);
+        try {
+            await api.createDriver({
+                first_name: form.first_name.trim(),
+                last_name: form.last_name.trim(),
+                email: form.email.trim(),
+                phone: form.phone.trim(),
+                billing_type: form.billing_type,
+                billing_rate: Number(form.billing_rate),
+            });
+            closeModal();
+            await loadDrivers();
+        } catch (err) {
+            setError('Failed to create driver. Please check the data and try again.');
+        } finally {
+            setSubmitting(false);
+        }
+    }
+
     const filteredDrivers = drivers.filter((d) =>
         `${d.first_name} ${d.last_name} ${d.email}`.toLowerCase().includes(search.toLowerCase())
     );
 
     const totalBalance = drivers.reduce((sum, d) => sum + (d.balance || 0), 0);
     const activeDrivers = drivers.filter((d) => d.billing_active).length;
+
+    const inputStyle: React.CSSProperties = {
+        width: '100%',
+        padding: 'var(--space-1) var(--space-2)',
+        border: '1px solid var(--medium-gray)',
+        borderRadius: 'var(--radius-small)',
+        fontSize: '0.875rem',
+        color: 'var(--dark-gray)',
+        background: 'var(--white)',
+        outline: 'none',
+        transition: 'border-color 0.2s',
+    };
+
+    const labelStyle: React.CSSProperties = {
+        display: 'block',
+        fontSize: '0.75rem',
+        fontWeight: 600,
+        color: 'var(--dark-gray)',
+        marginBottom: '4px',
+    };
 
     return (
         <div style={{ padding: 'var(--space-4)' }}>
@@ -129,20 +223,41 @@ export default function Drivers() {
                     <h3 style={{ fontFamily: 'var(--font-heading)', fontSize: '1rem', color: 'var(--dark-gray)' }}>
                         All Drivers
                     </h3>
-                    <input
-                        type="text"
-                        placeholder="Search drivers..."
-                        value={search}
-                        onChange={(e) => setSearch(e.target.value)}
-                        style={{
-                            padding: 'var(--space-1) var(--space-2)',
-                            border: '1px solid var(--medium-gray)',
-                            borderRadius: 'var(--radius-small)',
-                            color: 'var(--dark-gray)',
-                            width: '250px',
-                            fontSize: '0.875rem',
-                        }}
-                    />
+                    <div style={{ display: 'flex', gap: 'var(--space-2)', alignItems: 'center' }}>
+                        <input
+                            type="text"
+                            placeholder="Search drivers..."
+                            value={search}
+                            onChange={(e) => setSearch(e.target.value)}
+                            style={{
+                                padding: 'var(--space-1) var(--space-2)',
+                                border: '1px solid var(--medium-gray)',
+                                borderRadius: 'var(--radius-small)',
+                                color: 'var(--dark-gray)',
+                                width: '250px',
+                                fontSize: '0.875rem',
+                            }}
+                        />
+                        <button
+                            onClick={openModal}
+                            style={{
+                                padding: '8px 16px',
+                                background: 'var(--primary-blue)',
+                                color: 'var(--white)',
+                                border: 'none',
+                                borderRadius: 'var(--radius-small)',
+                                fontWeight: 600,
+                                fontSize: '0.875rem',
+                                cursor: 'pointer',
+                                whiteSpace: 'nowrap',
+                                transition: 'background 0.2s',
+                            }}
+                            onMouseEnter={(e) => (e.currentTarget.style.background = 'var(--accent-blue)')}
+                            onMouseLeave={(e) => (e.currentTarget.style.background = 'var(--primary-blue)')}
+                        >
+                            + Add Driver
+                        </button>
+                    </div>
                 </div>
 
                 {loading ? (
@@ -224,6 +339,187 @@ export default function Drivers() {
                     </table>
                 )}
             </div>
+
+            {/* Add Driver Modal */}
+            {showModal && (
+                <div
+                    style={{
+                        position: 'fixed',
+                        top: 0,
+                        left: 0,
+                        right: 0,
+                        bottom: 0,
+                        background: 'rgba(0, 0, 0, 0.5)',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        zIndex: 1000,
+                    }}
+                    onClick={(e) => { if (e.target === e.currentTarget) closeModal(); }}
+                >
+                    <div style={{
+                        background: 'var(--white)',
+                        borderRadius: 'var(--radius-standard)',
+                        width: '100%',
+                        maxWidth: '480px',
+                        boxShadow: '0 8px 32px rgba(0, 0, 0, 0.2)',
+                        overflow: 'hidden',
+                    }}>
+                        {/* Modal Header */}
+                        <div style={{
+                            padding: 'var(--space-3) var(--space-4)',
+                            borderBottom: '1px solid var(--light-gray)',
+                            display: 'flex',
+                            justifyContent: 'space-between',
+                            alignItems: 'center',
+                        }}>
+                            <h2 style={{
+                                fontFamily: 'var(--font-heading)',
+                                fontSize: '1.25rem',
+                                color: 'var(--dark-gray)',
+                            }}>
+                                Add Driver
+                            </h2>
+                            <button
+                                onClick={closeModal}
+                                style={{
+                                    background: 'none',
+                                    border: 'none',
+                                    fontSize: '1.25rem',
+                                    color: 'var(--dark-gray)',
+                                    opacity: 0.5,
+                                    cursor: 'pointer',
+                                    padding: '4px',
+                                    lineHeight: 1,
+                                }}
+                            >
+                                ✕
+                            </button>
+                        </div>
+
+                        {/* Modal Body */}
+                        <form onSubmit={handleSubmit} style={{ padding: 'var(--space-4)' }}>
+                            {error && (
+                                <div style={{
+                                    padding: 'var(--space-2)',
+                                    background: '#FDECEA',
+                                    color: 'var(--error-red)',
+                                    borderRadius: 'var(--radius-small)',
+                                    fontSize: '0.8125rem',
+                                    marginBottom: 'var(--space-3)',
+                                }}>
+                                    {error}
+                                </div>
+                            )}
+
+                            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 'var(--space-2)', marginBottom: 'var(--space-2)' }}>
+                                <div>
+                                    <label style={labelStyle}>First Name *</label>
+                                    <input
+                                        style={inputStyle}
+                                        value={form.first_name}
+                                        onChange={(e) => setForm({ ...form, first_name: e.target.value })}
+                                        placeholder="John"
+                                    />
+                                </div>
+                                <div>
+                                    <label style={labelStyle}>Last Name *</label>
+                                    <input
+                                        style={inputStyle}
+                                        value={form.last_name}
+                                        onChange={(e) => setForm({ ...form, last_name: e.target.value })}
+                                        placeholder="Doe"
+                                    />
+                                </div>
+                            </div>
+
+                            <div style={{ marginBottom: 'var(--space-2)' }}>
+                                <label style={labelStyle}>Email *</label>
+                                <input
+                                    style={inputStyle}
+                                    type="email"
+                                    value={form.email}
+                                    onChange={(e) => setForm({ ...form, email: e.target.value })}
+                                    placeholder="driver@example.com"
+                                />
+                            </div>
+
+                            <div style={{ marginBottom: 'var(--space-2)' }}>
+                                <label style={labelStyle}>Phone *</label>
+                                <input
+                                    style={inputStyle}
+                                    value={form.phone}
+                                    onChange={(e) => setForm({ ...form, phone: e.target.value })}
+                                    placeholder="+1 (555) 123-4567"
+                                />
+                            </div>
+
+                            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 'var(--space-2)', marginBottom: 'var(--space-4)' }}>
+                                <div>
+                                    <label style={labelStyle}>Billing Type</label>
+                                    <select
+                                        style={inputStyle}
+                                        value={form.billing_type}
+                                        onChange={(e) => setForm({ ...form, billing_type: e.target.value })}
+                                    >
+                                        <option value="daily">Daily</option>
+                                        <option value="weekly">Weekly</option>
+                                    </select>
+                                </div>
+                                <div>
+                                    <label style={labelStyle}>Billing Rate ($) *</label>
+                                    <input
+                                        style={inputStyle}
+                                        type="number"
+                                        step="0.01"
+                                        min="0"
+                                        value={form.billing_rate}
+                                        onChange={(e) => setForm({ ...form, billing_rate: e.target.value })}
+                                        placeholder="150.00"
+                                    />
+                                </div>
+                            </div>
+
+                            {/* Modal Footer */}
+                            <div style={{ display: 'flex', gap: 'var(--space-2)', justifyContent: 'flex-end' }}>
+                                <button
+                                    type="button"
+                                    onClick={closeModal}
+                                    style={{
+                                        padding: '8px 20px',
+                                        background: 'var(--light-gray)',
+                                        border: '1px solid var(--medium-gray)',
+                                        borderRadius: 'var(--radius-small)',
+                                        color: 'var(--dark-gray)',
+                                        fontWeight: 500,
+                                        fontSize: '0.875rem',
+                                        cursor: 'pointer',
+                                    }}
+                                >
+                                    Cancel
+                                </button>
+                                <button
+                                    type="submit"
+                                    disabled={submitting}
+                                    style={{
+                                        padding: '8px 20px',
+                                        background: submitting ? 'var(--medium-gray)' : 'var(--primary-blue)',
+                                        color: 'var(--white)',
+                                        border: 'none',
+                                        borderRadius: 'var(--radius-small)',
+                                        fontWeight: 600,
+                                        fontSize: '0.875rem',
+                                        cursor: submitting ? 'not-allowed' : 'pointer',
+                                        transition: 'background 0.2s',
+                                    }}
+                                >
+                                    {submitting ? 'Creating...' : 'Add Driver'}
+                                </button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            )}
         </div>
     );
 }

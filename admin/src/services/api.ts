@@ -69,6 +69,23 @@ class ApiService {
         return response.json();
     }
 
+    async createDriver(data: {
+        first_name: string;
+        last_name: string;
+        email: string;
+        phone: string;
+        billing_type: string;
+        billing_rate: number;
+    }) {
+        const response = await fetch(`${API_URL}/drivers`, {
+            method: 'POST',
+            headers: this.headers(),
+            body: JSON.stringify(data),
+        });
+        if (!response.ok) throw new Error('Failed to create driver');
+        return response.json();
+    }
+
     async getDriver(id: string) {
         const response = await fetch(`${API_URL}/drivers/${id}`, { headers: this.headers() });
         if (!response.ok) throw new Error('Failed to fetch driver');
