@@ -263,7 +263,11 @@ export default function Drivers() {
                     </div>
                 </div>
 
-                {loading ? (
+                {loadError ? (
+                    <div style={{ padding: 'var(--space-4)', textAlign: 'center', color: 'var(--error-red)' }}>
+                        {loadError}
+                    </div>
+                ) : loading ? (
                     <div style={{ padding: 'var(--space-4)', textAlign: 'center', color: 'var(--dark-gray)' }}>
                         Loading drivers...
                     </div>
