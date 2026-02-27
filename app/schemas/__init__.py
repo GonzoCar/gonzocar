@@ -60,8 +60,8 @@ class DriverUpdate(BaseModel):
 class DriverResponse(DriverBase):
     id: UUID
     billing_active: bool
-    created_at: datetime
-    updated_at: datetime
+    created_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
     balance: Optional[float] = None
     application_info: Optional[dict] = None
 

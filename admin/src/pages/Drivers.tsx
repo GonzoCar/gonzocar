@@ -12,7 +12,7 @@ interface Driver {
     billing_rate: number;
     billing_active: boolean;
     balance: number;
-    created_at: string;
+    created_at: string | null;
 }
 
 interface NewDriverForm {
@@ -41,6 +41,7 @@ export default function Drivers() {
     const [form, setForm] = useState<NewDriverForm>(emptyForm);
     const [submitting, setSubmitting] = useState(false);
     const [error, setError] = useState('');
+    const [loadError, setLoadError] = useState('');
 
     useEffect(() => {
         loadDrivers();
@@ -48,10 +49,12 @@ export default function Drivers() {
 
     async function loadDrivers() {
         try {
+            setLoadError('');
             const data = await api.getDrivers();
             setDrivers(data);
         } catch (error) {
             console.error('Failed to load drivers:', error);
+            setLoadError('Failed to load drivers. Please refresh the page.');
         } finally {
             setLoading(false);
         }

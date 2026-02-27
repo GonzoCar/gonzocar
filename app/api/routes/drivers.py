@@ -14,6 +14,26 @@ from app.schemas import (
 router = APIRouter(prefix="/drivers", tags=["drivers"])
 
 
+def _serialize_driver(driver, balance: float = 0.0, application_info=None) -> dict:
+    """Safely serialize a driver, handling None billing fields."""
+    result = {
+        "id": driver.id,
+        "first_name": driver.first_name,
+        "last_name": driver.last_name,
+        "email": driver.email,
+        "phone": driver.phone,
+        "billing_type": driver.billing_type.value if driver.billing_type else "daily",
+        "billing_rate": float(driver.billing_rate) if driver.billing_rate is not None else 0.0,
+        "billing_active": driver.billing_active if driver.billing_active is not None else True,
+        "created_at": driver.created_at,
+        "updated_at": driver.updated_at,
+        "balance": balance,
+    }
+    if application_info is not None:
+        result["application_info"] = application_info
+    return result
+
+
 @router.get("", response_model=list[DriverResponse])
 def list_drivers(
     skip: int = 0,
@@ -33,20 +53,7 @@ def list_drivers(
     # Calculate balance for each driver
     result = []
     for driver in drivers:
-        driver_dict = {
-            "id": driver.id,
-            "first_name": driver.first_name,
-            "last_name": driver.last_name,
-            "email": driver.email,
-            "phone": driver.phone,
-            "billing_type": driver.billing_type.value,
-            "billing_rate": float(driver.billing_rate),
-            "billing_active": driver.billing_active,
-            "created_at": driver.created_at,
-            "updated_at": driver.updated_at,
-            "balance": _calculate_balance(db, driver.id)
-        }
-        result.append(driver_dict)
+        result.append(_serialize_driver(driver, balance=_calculate_balance(db, driver.id)))
     
     return result
 
@@ -70,12 +77,7 @@ def create_driver(
     db.commit()
     db.refresh(driver)
     
-    return {
-        **driver.__dict__,
-        "billing_type": driver.billing_type.value,
-        "billing_rate": float(driver.billing_rate),
-        "balance": 0.0
-    }
+    return _serialize_driver(driver, balance=0.0)
 
 
 @router.get("/{driver_id}", response_model=DriverResponse)
@@ -98,13 +100,7 @@ def get_driver(
     
     application_info = application.form_data if application else None
 
-    return {
-        **driver.__dict__,
-        "billing_type": driver.billing_type.value,
-        "billing_rate": float(driver.billing_rate),
-        "balance": _calculate_balance(db, driver.id),
-        "application_info": application_info
-    }
+    return _serialize_driver(driver, balance=_calculate_balance(db, driver.id), application_info=application_info)
 
 
 @router.patch("/{driver_id}", response_model=DriverResponse)
@@ -126,12 +122,7 @@ def update_driver(
     db.commit()
     db.refresh(driver)
     
-    return {
-        **driver.__dict__,
-        "billing_type": driver.billing_type.value,
-        "billing_rate": float(driver.billing_rate),
-        "balance": _calculate_balance(db, driver.id)
-    }
+    return _serialize_driver(driver, balance=_calculate_balance(db, driver.id))
 
 
 @router.patch("/{driver_id}/billing", response_model=DriverResponse)
@@ -149,12 +140,7 @@ def toggle_billing(
     db.commit()
     db.refresh(driver)
     
-    return {
-        **driver.__dict__,
-        "billing_type": driver.billing_type.value,
-        "billing_rate": float(driver.billing_rate),
-        "balance": _calculate_balance(db, driver.id)
-    }
+    return _serialize_driver(driver, balance=_calculate_balance(db, driver.id))
 
 
 # Aliases
