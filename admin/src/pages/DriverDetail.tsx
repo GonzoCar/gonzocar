@@ -1181,18 +1181,28 @@ export default function DriverDetail() {
                         Swap Vehicle
                     </h3>
                     <form onSubmit={handleSwapVehicle} style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
-                        <input
-                            style={inputStyle}
-                            placeholder="New license plate"
-                            value={swapPlate}
-                            onChange={(e) => setSwapPlate(e.target.value)}
-                        />
-                        <input
-                            style={inputStyle}
-                            type="datetime-local"
-                            value={swapStartAt}
-                            onChange={(e) => setSwapStartAt(e.target.value)}
-                        />
+                        <label style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
+                            <span style={{ fontSize: "0.75rem", color: "var(--dark-gray)", opacity: 0.7, textTransform: "uppercase" }}>
+                                New License Plate
+                            </span>
+                            <input
+                                style={inputStyle}
+                                placeholder="New license plate"
+                                value={swapPlate}
+                                onChange={(e) => setSwapPlate(e.target.value)}
+                            />
+                        </label>
+                        <label style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
+                            <span style={{ fontSize: "0.75rem", color: "var(--dark-gray)", opacity: 0.7, textTransform: "uppercase" }}>
+                                Start Date/Time
+                            </span>
+                            <input
+                                style={inputStyle}
+                                type="datetime-local"
+                                value={swapStartAt}
+                                onChange={(e) => setSwapStartAt(e.target.value)}
+                            />
+                        </label>
                         <button
                             type="submit"
                             disabled={busy}
@@ -1224,38 +1234,55 @@ export default function DriverDetail() {
                     Vehicle Assignments
                 </h3>
                 <form onSubmit={handleAssignmentSubmit} style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr auto", gap: "8px", marginBottom: "var(--space-3)" }}>
-                    <input
-                        style={inputStyle}
-                        placeholder="License plate"
-                        value={assignmentForm.license_plate}
-                        onChange={(e) => setAssignmentForm((prev) => ({ ...prev, license_plate: e.target.value }))}
-                    />
-                    <input
-                        style={inputStyle}
-                        type="datetime-local"
-                        value={assignmentForm.start_at}
-                        onChange={(e) => setAssignmentForm((prev) => ({ ...prev, start_at: e.target.value }))}
-                    />
-                    <input
-                        style={inputStyle}
-                        type="datetime-local"
-                        value={assignmentForm.end_at}
-                        onChange={(e) => setAssignmentForm((prev) => ({ ...prev, end_at: e.target.value }))}
-                    />
-                    <button
-                        type="submit"
-                        disabled={busy}
-                        style={{
-                            padding: "8px 12px",
-                            border: "none",
-                            borderRadius: "var(--radius-small)",
-                            background: "var(--primary-blue)",
-                            color: "var(--white)",
-                            cursor: busy ? "not-allowed" : "pointer",
-                        }}
-                    >
-                        {editingAssignmentId ? "Update" : "Add"}
-                    </button>
+                    <label style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
+                        <span style={{ fontSize: "0.75rem", color: "var(--dark-gray)", opacity: 0.7, textTransform: "uppercase" }}>
+                            License Plate
+                        </span>
+                        <input
+                            style={inputStyle}
+                            placeholder="License plate"
+                            value={assignmentForm.license_plate}
+                            onChange={(e) => setAssignmentForm((prev) => ({ ...prev, license_plate: e.target.value }))}
+                        />
+                    </label>
+                    <label style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
+                        <span style={{ fontSize: "0.75rem", color: "var(--dark-gray)", opacity: 0.7, textTransform: "uppercase" }}>
+                            Start Date/Time
+                        </span>
+                        <input
+                            style={inputStyle}
+                            type="datetime-local"
+                            value={assignmentForm.start_at}
+                            onChange={(e) => setAssignmentForm((prev) => ({ ...prev, start_at: e.target.value }))}
+                        />
+                    </label>
+                    <label style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
+                        <span style={{ fontSize: "0.75rem", color: "var(--dark-gray)", opacity: 0.7, textTransform: "uppercase" }}>
+                            End Date/Time
+                        </span>
+                        <input
+                            style={inputStyle}
+                            type="datetime-local"
+                            value={assignmentForm.end_at}
+                            onChange={(e) => setAssignmentForm((prev) => ({ ...prev, end_at: e.target.value }))}
+                        />
+                    </label>
+                    <div style={{ display: "flex", alignItems: "flex-end" }}>
+                        <button
+                            type="submit"
+                            disabled={busy}
+                            style={{
+                                padding: "8px 12px",
+                                border: "none",
+                                borderRadius: "var(--radius-small)",
+                                background: "var(--primary-blue)",
+                                color: "var(--white)",
+                                cursor: busy ? "not-allowed" : "pointer",
+                            }}
+                        >
+                            {editingAssignmentId ? "Update" : "Add"}
+                        </button>
+                    </div>
                 </form>
 
                 {assignments.length === 0 ? (
@@ -1265,8 +1292,8 @@ export default function DriverDetail() {
                         <thead>
                             <tr style={{ background: "var(--light-gray)" }}>
                                 <th style={{ padding: "8px", textAlign: "left", fontSize: "0.75rem" }}>Plate</th>
-                                <th style={{ padding: "8px", textAlign: "left", fontSize: "0.75rem" }}>Start</th>
-                                <th style={{ padding: "8px", textAlign: "left", fontSize: "0.75rem" }}>End</th>
+                                <th style={{ padding: "8px", textAlign: "left", fontSize: "0.75rem" }}>Start Date/Time</th>
+                                <th style={{ padding: "8px", textAlign: "left", fontSize: "0.75rem" }}>End Date/Time</th>
                                 <th style={{ padding: "8px", textAlign: "left", fontSize: "0.75rem" }}>Chain</th>
                                 <th style={{ padding: "8px", textAlign: "right", fontSize: "0.75rem" }}>Action</th>
                             </tr>
