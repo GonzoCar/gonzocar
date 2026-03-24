@@ -52,9 +52,13 @@ export default function Drivers() {
             setLoadError('');
             const data = await api.getDrivers();
             setDrivers(data);
-        } catch (error) {
+        } catch (error: unknown) {
             console.error('Failed to load drivers:', error);
-            setLoadError('Failed to load drivers. Please refresh the page.');
+            if (error instanceof Error && error.message) {
+                setLoadError(error.message);
+            } else {
+                setLoadError('Failed to load drivers. Please refresh the page.');
+            }
         } finally {
             setLoading(false);
         }
@@ -105,8 +109,12 @@ export default function Drivers() {
             });
             closeModal();
             await loadDrivers();
-        } catch (err) {
-            setError('Failed to create driver. Please check the data and try again.');
+        } catch (err: unknown) {
+            if (err instanceof Error && err.message) {
+                setError(err.message);
+            } else {
+                setError('Failed to create driver. Please check the data and try again.');
+            }
         } finally {
             setSubmitting(false);
         }

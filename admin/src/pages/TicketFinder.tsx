@@ -57,6 +57,37 @@ export default function TicketFinder() {
         end_at: "",
     });
 
+    const inputStyle: React.CSSProperties = {
+        width: "100%",
+        padding: "var(--space-1) var(--space-2)",
+        border: "1px solid var(--medium-gray)",
+        borderRadius: "var(--radius-small)",
+        color: "var(--dark-gray)",
+        fontSize: "0.875rem",
+        background: "var(--white)",
+    };
+
+    const primaryButtonStyle: React.CSSProperties = {
+        padding: "8px 12px",
+        border: "none",
+        borderRadius: "var(--radius-small)",
+        background: "var(--primary-blue)",
+        color: "var(--white)",
+        cursor: "pointer",
+        fontWeight: 600,
+        fontSize: "0.875rem",
+    };
+
+    const secondaryButtonStyle: React.CSSProperties = {
+        padding: "4px 8px",
+        borderRadius: "var(--radius-small)",
+        border: "1px solid var(--medium-gray)",
+        background: "var(--white)",
+        color: "var(--dark-gray)",
+        cursor: "pointer",
+        fontSize: "0.75rem",
+    };
+
     useEffect(() => {
         loadDrivers();
     }, []);
@@ -195,11 +226,9 @@ export default function TicketFinder() {
                 <h3 style={{ fontFamily: "var(--font-heading)", marginBottom: "var(--space-2)" }}>
                     Manual Mapping
                 </h3>
-                <form
-                    onSubmit={saveMapping}
-                    style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr 1fr auto", gap: "8px" }}
-                >
+                <form onSubmit={saveMapping} style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr 1fr auto", gap: "8px" }}>
                     <select
+                        style={inputStyle}
                         value={mappingForm.driver_id}
                         onChange={(e) => setMappingForm((prev) => ({ ...prev, driver_id: e.target.value }))}
                     >
@@ -211,31 +240,24 @@ export default function TicketFinder() {
                         ))}
                     </select>
                     <input
+                        style={inputStyle}
                         placeholder="License plate"
                         value={mappingForm.license_plate}
                         onChange={(e) => setMappingForm((prev) => ({ ...prev, license_plate: e.target.value }))}
                     />
                     <input
+                        style={inputStyle}
                         type="datetime-local"
                         value={mappingForm.start_at}
                         onChange={(e) => setMappingForm((prev) => ({ ...prev, start_at: e.target.value }))}
                     />
                     <input
+                        style={inputStyle}
                         type="datetime-local"
                         value={mappingForm.end_at}
                         onChange={(e) => setMappingForm((prev) => ({ ...prev, end_at: e.target.value }))}
                     />
-                    <button
-                        disabled={busy}
-                        style={{
-                            padding: "8px 12px",
-                            border: "none",
-                            borderRadius: "var(--radius-small)",
-                            background: "var(--primary-blue)",
-                            color: "var(--white)",
-                            cursor: busy ? "not-allowed" : "pointer",
-                        }}
-                    >
+                    <button disabled={busy} style={{ ...primaryButtonStyle, cursor: busy ? "not-allowed" : "pointer", opacity: busy ? 0.7 : 1 }}>
                         {editingAssignmentId ? "Update" : "Add"}
                     </button>
                 </form>
@@ -254,27 +276,18 @@ export default function TicketFinder() {
                 </h3>
                 <form onSubmit={runSearch} style={{ display: "grid", gridTemplateColumns: "1fr 1fr auto", gap: "8px", marginBottom: "var(--space-3)" }}>
                     <input
+                        style={inputStyle}
                         placeholder="License plate"
                         value={searchLicensePlate}
                         onChange={(e) => setSearchLicensePlate(e.target.value)}
                     />
                     <input
+                        style={inputStyle}
                         placeholder="Driver name"
                         value={searchDriverName}
                         onChange={(e) => setSearchDriverName(e.target.value)}
                     />
-                    <button
-                        style={{
-                            padding: "8px 12px",
-                            border: "none",
-                            borderRadius: "var(--radius-small)",
-                            background: "var(--primary-blue)",
-                            color: "var(--white)",
-                            cursor: "pointer",
-                        }}
-                    >
-                        Search
-                    </button>
+                    <button style={primaryButtonStyle}>Search</button>
                 </form>
 
                 {results.length === 0 ? (
@@ -298,16 +311,7 @@ export default function TicketFinder() {
                                     <td style={{ padding: "8px" }}>{new Date(item.start_at).toLocaleString()}</td>
                                     <td style={{ padding: "8px" }}>{item.end_at ? new Date(item.end_at).toLocaleString() : "-"}</td>
                                     <td style={{ padding: "8px", textAlign: "right" }}>
-                                        <button
-                                            onClick={() => editAssignment(item)}
-                                            style={{
-                                                padding: "4px 8px",
-                                                borderRadius: "var(--radius-small)",
-                                                border: "1px solid var(--medium-gray)",
-                                                background: "var(--white)",
-                                                cursor: "pointer",
-                                            }}
-                                        >
+                                        <button onClick={() => editAssignment(item)} style={secondaryButtonStyle}>
                                             Edit
                                         </button>
                                     </td>

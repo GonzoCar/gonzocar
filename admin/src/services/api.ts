@@ -40,6 +40,23 @@ class ApiService {
         return this.token;
     }
 
+    private async parseError(response: Response, fallback: string): Promise<Error> {
+        let message = fallback;
+        try {
+            const data = await response.json();
+            if (typeof data?.detail === "string") {
+                message = data.detail;
+            } else if (typeof data?.message === "string") {
+                message = data.message;
+            } else if (typeof data?.error === "string") {
+                message = data.error;
+            }
+        } catch {
+            // keep fallback
+        }
+        return new Error(message);
+    }
+
     async login(credentials: LoginCredentials): Promise<TokenResponse> {
         const response = await fetch(`${API_URL}/auth/login`, {
             method: "POST",
@@ -65,7 +82,7 @@ class ApiService {
     // Drivers
     async getDrivers() {
         const response = await fetch(`${API_URL}/drivers`, { headers: this.headers() });
-        if (!response.ok) throw new Error("Failed to fetch drivers");
+        if (!response.ok) throw await this.parseError(response, "Failed to fetch drivers");
         return response.json();
     }
 
@@ -86,7 +103,7 @@ class ApiService {
             headers: this.headers(),
             body: JSON.stringify(data),
         });
-        if (!response.ok) throw new Error("Failed to create driver");
+        if (!response.ok) throw await this.parseError(response, "Failed to create driver");
         return response.json();
     }
 
