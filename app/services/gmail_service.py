@@ -31,6 +31,11 @@ PAYMENT_SENDERS = [
     'venmo@venmo.com',             # Venmo
     'alerts@account.chime.com',    # Chime
     'notifications@stripe.com',    # Stripe
+    # Zelle destination inboxes (some notifications can arrive forwarded)
+    'payashwood@gonzocar.com',
+    'paysilver@gonzocar.com',
+    'payevergreen@gonzocar.com',
+    'gonzopay@gonzocar.com',
 ]
 
 

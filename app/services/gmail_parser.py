@@ -17,6 +17,13 @@ from datetime import datetime
 from typing import Optional
 from dataclasses import dataclass
 
+ZELLE_FORWARDING_INBOXES = {
+    'payashwood@gonzocar.com',
+    'paysilver@gonzocar.com',
+    'payevergreen@gonzocar.com',
+    'gonzopay@gonzocar.com',
+}
+
 
 @dataclass
 class ParsedPayment:
@@ -77,7 +84,13 @@ class ZelleParser:
     
     @staticmethod
     def can_parse(from_addr: str, subject: str) -> bool:
-        return 'chase.com' in from_addr.lower() and 'zelle' in subject.lower()
+        from_lower = from_addr.lower()
+        subject_lower = subject.lower()
+        if 'zelle' not in subject_lower:
+            return False
+        if 'chase.com' in from_lower:
+            return True
+        return any(inbox in from_lower for inbox in ZELLE_FORWARDING_INBOXES)
     
     @staticmethod
     def parse(msg: email.message.Message, body: str) -> Optional[ParsedPayment]:
