@@ -194,8 +194,8 @@ export default function Applications() {
                     {loading ? "Loading..." : `Showing ${firstRowIndex}-${lastRowIndex} of ${total}`}
                 </div>
                 <div style={{ display: "flex", gap: "var(--space-2)", alignItems: "center" }}>
-                    <label style={{ fontSize: "0.875rem", color: "var(--dark-gray)", opacity: 0.8 }}>
-                        Rows:
+                    <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                        <span style={{ fontSize: "0.875rem", color: "var(--dark-gray)", opacity: 0.8 }}>Rows:</span>
                         <select
                             value={pageSize}
                             onChange={(e) => {
@@ -203,29 +203,35 @@ export default function Applications() {
                                 setPage(1);
                             }}
                             style={{
-                                marginLeft: "8px",
-                                padding: "6px 8px",
+                                minWidth: "86px",
+                                height: "38px",
+                                padding: "0 10px",
                                 border: "1px solid var(--medium-gray)",
                                 borderRadius: "var(--radius-small)",
                                 background: "var(--white)",
+                                color: "var(--dark-gray)",
+                                fontSize: "0.95rem",
+                                fontWeight: 500,
                             }}
                         >
                             <option value={20}>20</option>
                             <option value={50}>50</option>
                         </select>
-                    </label>
+                    </div>
                     <button
                         onClick={handleBackfillDrivers}
                         disabled={syncing}
                         style={{
-                            padding: "8px 12px",
-                            border: "1px solid var(--medium-gray)",
+                            height: "38px",
+                            padding: "0 14px",
+                            border: "none",
                             borderRadius: "var(--radius-small)",
-                            background: "var(--light-gray)",
-                            color: "var(--dark-gray)",
+                            background: "var(--primary-blue)",
+                            color: "var(--white)",
                             cursor: syncing ? "not-allowed" : "pointer",
                             opacity: syncing ? 0.7 : 1,
                             fontWeight: 600,
+                            fontSize: "0.9rem",
                         }}
                     >
                         {syncing ? "Syncing..." : "Sync Approved -> Drivers"}

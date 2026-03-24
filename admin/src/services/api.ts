@@ -86,6 +86,18 @@ class ApiService {
         return response.json();
     }
 
+    async getDriversPage(options?: { page?: number; pageSize?: number; search?: string }) {
+        const params = new URLSearchParams();
+        params.set("page", String(options?.page ?? 1));
+        params.set("page_size", String(options?.pageSize ?? 20));
+        if (options?.search?.trim()) {
+            params.set("search", options.search.trim());
+        }
+        const response = await fetch(`${API_URL}/drivers/page?${params.toString()}`, { headers: this.headers() });
+        if (!response.ok) throw await this.parseError(response, "Failed to fetch drivers");
+        return response.json();
+    }
+
     async createDriver(data: {
         first_name: string;
         last_name: string;

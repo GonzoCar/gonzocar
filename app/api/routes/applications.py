@@ -4,7 +4,7 @@ from uuid import UUID
 from uuid import uuid4
 
 from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy import and_, func
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.api.deps import get_db, get_current_user
@@ -119,12 +119,7 @@ def _ensure_driver_for_application(application: Application, db: Session) -> Dri
 def _base_applications_query(db: Session, exclude_linked_drivers: bool):
     query = db.query(Application)
     if exclude_linked_drivers:
-        query = query.filter(
-            ~and_(
-                Application.driver_id.isnot(None),
-                Application.status.in_([ApplicationStatus.approved, ApplicationStatus.onboarding]),
-            )
-        )
+        query = query.filter(Application.driver_id.is_(None))
     return query
 
 

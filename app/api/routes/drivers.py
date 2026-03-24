@@ -1,8 +1,9 @@
+import math
 from datetime import datetime, timedelta, timezone
 from uuid import UUID, uuid4
 
 from fastapi import APIRouter, Body, Depends, HTTPException, Query, status
-from sqlalchemy import func, or_
+from sqlalchemy import case, func, or_, select
 from sqlalchemy.orm import Session, joinedload
 
 from app.api.deps import get_current_user, get_db
@@ -181,6 +182,77 @@ def list_drivers(
 
     drivers = query.order_by(Driver.created_at.desc(), Driver.updated_at.desc()).offset(skip).limit(limit).all()
     return [_serialize_driver(driver, balance=_calculate_balance(db, driver.id)) for driver in drivers]
+
+
+@router.get("/page")
+def list_drivers_page(
+    page: int = Query(default=1, ge=1),
+    page_size: int = Query(default=20),
+    search: str | None = Query(default=None),
+    billing_active: bool | None = None,
+    db: Session = Depends(get_db),
+    current_user: Staff = Depends(get_current_user),
+):
+    if page_size not in {20, 50}:
+        page_size = 20
+
+    base_query = db.query(Driver)
+    if billing_active is not None:
+        base_query = base_query.filter(Driver.billing_active == billing_active)
+
+    if search:
+        term = f"%{search.strip()}%"
+        base_query = base_query.filter(
+            or_(
+                Driver.first_name.ilike(term),
+                Driver.last_name.ilike(term),
+                Driver.email.ilike(term),
+                Driver.phone.ilike(term),
+                func.concat(Driver.first_name, " ", Driver.last_name).ilike(term),
+            )
+        )
+
+    total = base_query.count()
+    total_pages = max(1, math.ceil(total / page_size)) if page_size else 1
+    if page > total_pages:
+        page = total_pages
+    offset = (page - 1) * page_size
+
+    drivers = (
+        base_query.order_by(Driver.created_at.desc(), Driver.updated_at.desc())
+        .offset(offset)
+        .limit(page_size)
+        .all()
+    )
+
+    items = [_serialize_driver(driver, balance=_calculate_balance(db, driver.id)) for driver in drivers]
+
+    total_count = total
+    active_count = base_query.filter(Driver.billing_active.is_(True)).count()
+    driver_ids_subquery = base_query.with_entities(Driver.id).subquery()
+    total_balance = db.query(
+        func.coalesce(
+            func.sum(
+                case(
+                    (Ledger.type == "credit", Ledger.amount),
+                    else_=-Ledger.amount,
+                )
+            ),
+            0,
+        )
+    ).filter(
+        Ledger.driver_id.in_(select(driver_ids_subquery.c.id))
+    ).scalar()
+
+    return {
+        "items": items,
+        "page": page,
+        "page_size": page_size,
+        "total": int(total_count or 0),
+        "total_pages": total_pages,
+        "active_count": int(active_count or 0),
+        "balance_total": float(total_balance or 0),
+    }
 
 
 @router.post("", response_model=DriverResponse, status_code=status.HTTP_201_CREATED)

@@ -15,6 +15,16 @@ interface Driver {
     created_at: string | null;
 }
 
+interface DriversPagePayload {
+    items: Driver[];
+    page: number;
+    page_size: number;
+    total: number;
+    total_pages: number;
+    active_count: number;
+    balance_total: number;
+}
+
 interface NewDriverForm {
     first_name: string;
     last_name: string;
@@ -43,19 +53,43 @@ export default function Drivers() {
     const [error, setError] = useState('');
     const [loadError, setLoadError] = useState('');
 
+    const [page, setPage] = useState(1);
+    const [pageSize, setPageSize] = useState(20);
+    const [total, setTotal] = useState(0);
+    const [totalPages, setTotalPages] = useState(1);
+    const [activeDrivers, setActiveDrivers] = useState(0);
+    const [totalBalance, setTotalBalance] = useState(0);
+
     useEffect(() => {
         loadDrivers();
-    }, []);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [page, pageSize, search]);
 
     async function loadDrivers() {
+        setLoading(true);
         try {
             setLoadError('');
-            const data = await api.getDrivers();
-            setDrivers(data);
-        } catch (error: unknown) {
-            console.error('Failed to load drivers:', error);
-            if (error instanceof Error && error.message) {
-                setLoadError(error.message);
+            const data = (await api.getDriversPage({
+                page,
+                pageSize,
+                search,
+            })) as DriversPagePayload;
+
+            const nextTotalPages = Math.max(1, Number(data.total_pages || 1));
+            if (page > nextTotalPages) {
+                setPage(nextTotalPages);
+                return;
+            }
+
+            setDrivers(Array.isArray(data.items) ? data.items : []);
+            setTotal(Number(data.total || 0));
+            setTotalPages(nextTotalPages);
+            setActiveDrivers(Number(data.active_count || 0));
+            setTotalBalance(Number(data.balance_total || 0));
+        } catch (loadErr: unknown) {
+            console.error('Failed to load drivers:', loadErr);
+            if (loadErr instanceof Error && loadErr.message) {
+                setLoadError(loadErr.message);
             } else {
                 setLoadError('Failed to load drivers. Please refresh the page.');
             }
@@ -108,6 +142,7 @@ export default function Drivers() {
                 billing_rate: Number(form.billing_rate),
             });
             closeModal();
+            setPage(1);
             await loadDrivers();
         } catch (err: unknown) {
             if (err instanceof Error && err.message) {
@@ -119,13 +154,6 @@ export default function Drivers() {
             setSubmitting(false);
         }
     }
-
-    const filteredDrivers = drivers.filter((d) =>
-        `${d.first_name} ${d.last_name} ${d.email}`.toLowerCase().includes(search.toLowerCase())
-    );
-
-    const totalBalance = drivers.reduce((sum, d) => sum + (d.balance || 0), 0);
-    const activeDrivers = drivers.filter((d) => d.billing_active).length;
 
     const inputStyle: React.CSSProperties = {
         width: '100%',
@@ -147,9 +175,11 @@ export default function Drivers() {
         marginBottom: '4px',
     };
 
+    const firstRowIndex = total === 0 ? 0 : (page - 1) * pageSize + 1;
+    const lastRowIndex = total === 0 ? 0 : Math.min(page * pageSize, total);
+
     return (
         <div style={{ padding: 'var(--space-4)' }}>
-            {/* Header */}
             <div style={{ marginBottom: 'var(--space-4)' }}>
                 <h1 style={{
                     fontFamily: 'var(--font-heading)',
@@ -164,7 +194,6 @@ export default function Drivers() {
                 </p>
             </div>
 
-            {/* Stats */}
             <div style={{
                 display: 'grid',
                 gridTemplateColumns: 'repeat(3, 1fr)',
@@ -181,7 +210,7 @@ export default function Drivers() {
                         Total Drivers
                     </div>
                     <div style={{ fontSize: '1.5rem', fontWeight: 700, fontFamily: 'var(--font-heading)', color: 'var(--dark-gray)' }}>
-                        {drivers.length}
+                        {total}
                     </div>
                 </div>
                 <div style={{
@@ -217,7 +246,6 @@ export default function Drivers() {
                 </div>
             </div>
 
-            {/* Table */}
             <div style={{
                 background: 'var(--white)',
                 borderRadius: 'var(--radius-standard)',
@@ -230,25 +258,52 @@ export default function Drivers() {
                     alignItems: 'center',
                     padding: 'var(--space-3)',
                     borderBottom: '1px solid var(--light-gray)',
+                    gap: 'var(--space-2)',
+                    flexWrap: 'wrap',
                 }}>
                     <h3 style={{ fontFamily: 'var(--font-heading)', fontSize: '1rem', color: 'var(--dark-gray)' }}>
                         All Drivers
                     </h3>
-                    <div style={{ display: 'flex', gap: 'var(--space-2)', alignItems: 'center' }}>
+                    <div style={{ display: 'flex', gap: 'var(--space-2)', alignItems: 'center', flexWrap: 'wrap' }}>
                         <input
                             type="text"
                             placeholder="Search drivers..."
                             value={search}
-                            onChange={(e) => setSearch(e.target.value)}
+                            onChange={(e) => {
+                                setSearch(e.target.value);
+                                setPage(1);
+                            }}
                             style={{
                                 padding: 'var(--space-1) var(--space-2)',
                                 border: '1px solid var(--medium-gray)',
                                 borderRadius: 'var(--radius-small)',
                                 color: 'var(--dark-gray)',
-                                width: '250px',
+                                width: '240px',
                                 fontSize: '0.875rem',
                             }}
                         />
+                        <label style={{ fontSize: '0.8125rem', color: 'var(--dark-gray)', opacity: 0.8 }}>
+                            Rows
+                            <select
+                                value={pageSize}
+                                onChange={(e) => {
+                                    setPageSize(Number(e.target.value));
+                                    setPage(1);
+                                }}
+                                style={{
+                                    marginLeft: '6px',
+                                    padding: '7px 10px',
+                                    border: '1px solid var(--medium-gray)',
+                                    borderRadius: 'var(--radius-small)',
+                                    background: 'var(--white)',
+                                    color: 'var(--dark-gray)',
+                                    fontWeight: 500,
+                                }}
+                            >
+                                <option value={20}>20</option>
+                                <option value={50}>50</option>
+                            </select>
+                        </label>
                         <button
                             onClick={openModal}
                             style={{
@@ -261,14 +316,25 @@ export default function Drivers() {
                                 fontSize: '0.875rem',
                                 cursor: 'pointer',
                                 whiteSpace: 'nowrap',
-                                transition: 'background 0.2s',
                             }}
-                            onMouseEnter={(e) => (e.currentTarget.style.background = 'var(--accent-blue)')}
-                            onMouseLeave={(e) => (e.currentTarget.style.background = 'var(--primary-blue)')}
                         >
                             + Add Driver
                         </button>
                     </div>
+                </div>
+
+                <div style={{
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    alignItems: 'center',
+                    padding: '10px var(--space-3)',
+                    borderBottom: '1px solid var(--light-gray)',
+                    color: 'var(--dark-gray)',
+                    opacity: 0.8,
+                    fontSize: '0.875rem',
+                }}>
+                    <span>{loading ? 'Loading...' : `Showing ${firstRowIndex}-${lastRowIndex} of ${total}`}</span>
+                    <span>Page {page} / {totalPages}</span>
                 </div>
 
                 {loadError ? (
@@ -279,7 +345,7 @@ export default function Drivers() {
                     <div style={{ padding: 'var(--space-4)', textAlign: 'center', color: 'var(--dark-gray)' }}>
                         Loading drivers...
                     </div>
-                ) : filteredDrivers.length === 0 ? (
+                ) : drivers.length === 0 ? (
                     <div style={{ padding: 'var(--space-4)', textAlign: 'center', color: 'var(--dark-gray)', opacity: 0.6 }}>
                         No drivers found
                     </div>
@@ -296,7 +362,7 @@ export default function Drivers() {
                             </tr>
                         </thead>
                         <tbody>
-                            {filteredDrivers.map((driver) => (
+                            {drivers.map((driver) => (
                                 <tr key={driver.id} style={{ borderTop: '1px solid var(--light-gray)' }}>
                                     <td style={{ padding: 'var(--space-2) var(--space-3)', fontWeight: 500, color: 'var(--dark-gray)' }}>
                                         {driver.first_name || driver.last_name
@@ -355,7 +421,46 @@ export default function Drivers() {
                 )}
             </div>
 
-            {/* Add Driver Modal */}
+            <div style={{
+                display: 'flex',
+                justifyContent: 'flex-end',
+                alignItems: 'center',
+                gap: '8px',
+                marginTop: 'var(--space-3)',
+            }}>
+                <button
+                    onClick={() => setPage((p) => Math.max(1, p - 1))}
+                    disabled={loading || page <= 1}
+                    style={{
+                        padding: '6px 10px',
+                        borderRadius: 'var(--radius-small)',
+                        border: '1px solid var(--medium-gray)',
+                        background: 'var(--white)',
+                        cursor: loading || page <= 1 ? 'not-allowed' : 'pointer',
+                        opacity: loading || page <= 1 ? 0.6 : 1,
+                    }}
+                >
+                    Prev
+                </button>
+                <span style={{ fontSize: '0.875rem', color: 'var(--dark-gray)' }}>
+                    Page {page} / {totalPages}
+                </span>
+                <button
+                    onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+                    disabled={loading || page >= totalPages}
+                    style={{
+                        padding: '6px 10px',
+                        borderRadius: 'var(--radius-small)',
+                        border: '1px solid var(--medium-gray)',
+                        background: 'var(--white)',
+                        cursor: loading || page >= totalPages ? 'not-allowed' : 'pointer',
+                        opacity: loading || page >= totalPages ? 0.6 : 1,
+                    }}
+                >
+                    Next
+                </button>
+            </div>
+
             {showModal && (
                 <div
                     style={{
@@ -380,7 +485,6 @@ export default function Drivers() {
                         boxShadow: '0 8px 32px rgba(0, 0, 0, 0.2)',
                         overflow: 'hidden',
                     }}>
-                        {/* Modal Header */}
                         <div style={{
                             padding: 'var(--space-3) var(--space-4)',
                             borderBottom: '1px solid var(--light-gray)',
@@ -412,7 +516,6 @@ export default function Drivers() {
                             </button>
                         </div>
 
-                        {/* Modal Body */}
                         <form onSubmit={handleSubmit} style={{ padding: 'var(--space-4)' }}>
                             {error && (
                                 <div style={{
@@ -495,7 +598,6 @@ export default function Drivers() {
                                 </div>
                             </div>
 
-                            {/* Modal Footer */}
                             <div style={{ display: 'flex', gap: 'var(--space-2)', justifyContent: 'flex-end' }}>
                                 <button
                                     type="button"
