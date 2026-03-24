@@ -696,6 +696,40 @@ export default function DriverDetail() {
         );
     };
 
+    const billingControlButtons: Array<{
+        status: Driver["billing_status"];
+        label: string;
+        activeBg: string;
+        activeBorder: string;
+        activeText: string;
+        activeRing: string;
+    }> = [
+        {
+            status: "active",
+            label: "Resume",
+            activeBg: "#D4EDDA",
+            activeBorder: "#58b56a",
+            activeText: "#155724",
+            activeRing: "rgba(88, 181, 106, 0.28)",
+        },
+        {
+            status: "paused",
+            label: "Pause",
+            activeBg: "#FFF3CD",
+            activeBorder: "#d0b047",
+            activeText: "#856404",
+            activeRing: "rgba(208, 176, 71, 0.28)",
+        },
+        {
+            status: "terminated",
+            label: "Terminate",
+            activeBg: "#F8D7DA",
+            activeBorder: "#ca5f6b",
+            activeText: "#721C24",
+            activeRing: "rgba(202, 95, 107, 0.24)",
+        },
+    ];
+
     const inputStyle: React.CSSProperties = {
         width: "100%",
         padding: "8px 10px",
@@ -920,45 +954,33 @@ export default function DriverDetail() {
                     }}
                 >
                     <h3 style={{ fontFamily: "var(--font-heading)", fontSize: "1rem", color: "var(--dark-gray)" }}>Billing Controls</h3>
-                    <button
-                        disabled={busy}
-                        onClick={() => handleBillingStatusChange("active")}
-                        style={{
-                            padding: "8px 12px",
-                            background: "#D4EDDA",
-                            border: "1px solid #9ad7a0",
-                            borderRadius: "var(--radius-small)",
-                            cursor: busy ? "not-allowed" : "pointer",
-                        }}
-                    >
-                        Resume
-                    </button>
-                    <button
-                        disabled={busy}
-                        onClick={() => handleBillingStatusChange("paused")}
-                        style={{
-                            padding: "8px 12px",
-                            background: "#FFF3CD",
-                            border: "1px solid #e7d387",
-                            borderRadius: "var(--radius-small)",
-                            cursor: busy ? "not-allowed" : "pointer",
-                        }}
-                    >
-                        Pause
-                    </button>
-                    <button
-                        disabled={busy}
-                        onClick={() => handleBillingStatusChange("terminated")}
-                        style={{
-                            padding: "8px 12px",
-                            background: "#F8D7DA",
-                            border: "1px solid #e1a9af",
-                            borderRadius: "var(--radius-small)",
-                            cursor: busy ? "not-allowed" : "pointer",
-                        }}
-                    >
-                        Terminate
-                    </button>
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                        <div style={{ fontSize: "0.75rem", opacity: 0.7 }}>Current Status</div>
+                        {renderBillingBadge(driver.billing_status)}
+                    </div>
+                    {billingControlButtons.map((item) => {
+                        const isCurrent = driver.billing_status === item.status;
+                        return (
+                            <button
+                                key={item.status}
+                                disabled={busy}
+                                onClick={() => handleBillingStatusChange(item.status)}
+                                style={{
+                                    padding: "8px 12px",
+                                    background: isCurrent ? item.activeBg : "var(--white)",
+                                    border: `${isCurrent ? 2 : 1}px solid ${isCurrent ? item.activeBorder : "var(--medium-gray)"}`,
+                                    borderRadius: "var(--radius-small)",
+                                    color: isCurrent ? item.activeText : "var(--dark-gray)",
+                                    fontWeight: isCurrent ? 700 : 600,
+                                    boxShadow: isCurrent ? `0 0 0 2px ${item.activeRing}` : "none",
+                                    cursor: busy ? "not-allowed" : "pointer",
+                                    opacity: busy ? 0.75 : 1,
+                                }}
+                            >
+                                {item.label}{isCurrent ? " (Current)" : ""}
+                            </button>
+                        );
+                    })}
 
                     <hr style={{ border: "none", borderTop: "1px solid var(--light-gray)" }} />
                     <div style={{ fontSize: "0.75rem", opacity: 0.7 }}>Driver Portal</div>
