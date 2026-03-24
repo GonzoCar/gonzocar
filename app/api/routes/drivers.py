@@ -15,6 +15,8 @@ from app.models import (
     Driver,
     DriverVehicleAssignment,
     Ledger,
+    PaymentRaw,
+    SmsLog,
     Staff,
     Vehicle,
 )
@@ -23,6 +25,7 @@ from app.schemas import (
     AliasResponse,
     BillingStatusUpdate,
     DriverCreate,
+    DriverDeleteRequest,
     DriverResponse,
     DriverUpdate,
     LedgerCancelRequest,
@@ -47,6 +50,10 @@ def _to_utc_naive(value: datetime | None) -> datetime | None:
 
 def _normalize_plate(plate: str) -> str:
     return "".join(ch for ch in plate.upper().strip() if ch.isalnum() or ch == "-")
+
+
+def _normalize_human_name(name: str) -> str:
+    return " ".join((name or "").strip().split()).lower()
 
 
 def _ranges_overlap(
@@ -470,6 +477,51 @@ def get_driver(
     application_info = application.form_data if application else None
 
     return _serialize_driver(driver, balance=_calculate_balance(db, driver.id), application_info=application_info)
+
+
+@router.delete("/{driver_id}")
+def delete_driver(
+    driver_id: UUID,
+    request: DriverDeleteRequest,
+    db: Session = Depends(get_db),
+    current_user: Staff = Depends(get_current_user),
+):
+    driver = db.query(Driver).filter(Driver.id == driver_id).first()
+    if not driver:
+        raise HTTPException(status_code=404, detail="Driver not found")
+
+    expected_name = _normalize_human_name(f"{driver.first_name} {driver.last_name}")
+    provided_name = _normalize_human_name(request.confirmation_name)
+    if not provided_name or provided_name != expected_name:
+        raise HTTPException(status_code=400, detail="Confirmation name does not match driver full name")
+
+    # Break references first to satisfy foreign keys.
+    db.query(Application).filter(Application.driver_id == driver.id).update(
+        {Application.driver_id: None},
+        synchronize_session=False,
+    )
+    db.query(PaymentRaw).filter(PaymentRaw.driver_id == driver.id).update(
+        {
+            PaymentRaw.driver_id: None,
+            PaymentRaw.matched: False,
+        },
+        synchronize_session=False,
+    )
+
+    # Remove dependent records owned by the driver.
+    db.query(Ledger).filter(Ledger.driver_id == driver.id).delete(synchronize_session=False)
+    db.query(SmsLog).filter(SmsLog.driver_id == driver.id).delete(synchronize_session=False)
+    db.query(Alias).filter(Alias.driver_id == driver.id).delete(synchronize_session=False)
+    db.query(DriverVehicleAssignment).filter(DriverVehicleAssignment.driver_id == driver.id).delete(
+        synchronize_session=False
+    )
+
+    db.delete(driver)
+    db.commit()
+    return {
+        "deleted": True,
+        "driver_id": driver_id,
+    }
 
 
 @router.patch("/{driver_id}", response_model=DriverResponse)

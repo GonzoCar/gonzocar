@@ -1,7 +1,7 @@
 import unittest
 from datetime import datetime, timezone
 
-from app.api.routes.drivers import _normalize_plate, _ranges_overlap, _to_utc_naive
+from app.api.routes.drivers import _normalize_human_name, _normalize_plate, _ranges_overlap, _to_utc_naive
 
 
 class DriverHelperTests(unittest.TestCase):
@@ -29,6 +29,9 @@ class DriverHelperTests(unittest.TestCase):
         self.assertIsNotNone(naive)
         self.assertEqual(naive.tzinfo, None)
         self.assertEqual(naive.hour, 12)
+
+    def test_normalize_human_name(self):
+        self.assertEqual(_normalize_human_name("  Tom   Ford "), "tom ford")
 
 
 if __name__ == "__main__":

@@ -282,28 +282,6 @@ export default function Drivers() {
                                 fontSize: '0.875rem',
                             }}
                         />
-                        <label style={{ fontSize: '0.8125rem', color: 'var(--dark-gray)', opacity: 0.8 }}>
-                            Rows
-                            <select
-                                value={pageSize}
-                                onChange={(e) => {
-                                    setPageSize(Number(e.target.value));
-                                    setPage(1);
-                                }}
-                                style={{
-                                    marginLeft: '6px',
-                                    padding: '7px 10px',
-                                    border: '1px solid var(--medium-gray)',
-                                    borderRadius: 'var(--radius-small)',
-                                    background: 'var(--white)',
-                                    color: 'var(--dark-gray)',
-                                    fontWeight: 500,
-                                }}
-                            >
-                                <option value={20}>20</option>
-                                <option value={50}>50</option>
-                            </select>
-                        </label>
                         <button
                             onClick={openModal}
                             style={{
@@ -423,11 +401,35 @@ export default function Drivers() {
 
             <div style={{
                 display: 'flex',
-                justifyContent: 'flex-end',
+                justifyContent: 'space-between',
                 alignItems: 'center',
                 gap: '8px',
                 marginTop: 'var(--space-3)',
+                flexWrap: 'wrap',
             }}>
+                <label style={{ fontSize: '0.8125rem', color: 'var(--dark-gray)', opacity: 0.8 }}>
+                    Rows
+                    <select
+                        value={pageSize}
+                        onChange={(e) => {
+                            setPageSize(Number(e.target.value));
+                            setPage(1);
+                        }}
+                        style={{
+                            marginLeft: '6px',
+                            padding: '7px 10px',
+                            border: '1px solid var(--medium-gray)',
+                            borderRadius: 'var(--radius-small)',
+                            background: 'var(--white)',
+                            color: 'var(--dark-gray)',
+                            fontWeight: 500,
+                        }}
+                    >
+                        <option value={20}>20</option>
+                        <option value={50}>50</option>
+                    </select>
+                </label>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                 <button
                     onClick={() => setPage((p) => Math.max(1, p - 1))}
                     disabled={loading || page <= 1}
@@ -459,6 +461,7 @@ export default function Drivers() {
                 >
                     Next
                 </button>
+                </div>
             </div>
 
             {showModal && (

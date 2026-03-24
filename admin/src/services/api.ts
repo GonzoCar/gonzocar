@@ -125,6 +125,16 @@ class ApiService {
         return response.json();
     }
 
+    async deleteDriver(id: string, confirmationName: string) {
+        const response = await fetch(`${API_URL}/drivers/${id}`, {
+            method: "DELETE",
+            headers: this.headers(),
+            body: JSON.stringify({ confirmation_name: confirmationName }),
+        });
+        if (!response.ok) throw await this.parseError(response, "Failed to delete driver");
+        return response.json();
+    }
+
     async updateDriver(id: string, data: Record<string, unknown>) {
         const response = await fetch(`${API_URL}/drivers/${id}`, {
             method: "PATCH",

@@ -68,6 +68,10 @@ class DriverUpdate(BaseModel):
     application_info: Optional[dict] = None
 
 
+class DriverDeleteRequest(BaseModel):
+    confirmation_name: str
+
+
 class DriverResponse(DriverBase):
     id: UUID
     billing_active: bool

@@ -264,6 +264,10 @@ function toIsoOrUndefined(value: string): string | undefined {
     return date.toISOString();
 }
 
+function normalizeNameForCompare(value: string): string {
+    return value.trim().replace(/\s+/g, " ").toLowerCase();
+}
+
 export default function DriverDetail() {
     const { id } = useParams<{ id: string }>();
     const navigate = useNavigate();
@@ -275,6 +279,9 @@ export default function DriverDetail() {
     const [portalLink, setPortalLink] = useState<PortalLink | null>(null);
     const [loading, setLoading] = useState(true);
     const [busy, setBusy] = useState(false);
+    const [deleteModalOpen, setDeleteModalOpen] = useState(false);
+    const [deleteConfirmName, setDeleteConfirmName] = useState("");
+    const [deleteError, setDeleteError] = useState("");
 
     const [isEditingProfile, setIsEditingProfile] = useState(false);
     const [profileForm, setProfileForm] = useState<ProfileForm>({
@@ -505,6 +512,38 @@ export default function DriverDetail() {
         }
     }
 
+    function openDeleteDriverModal() {
+        setDeleteError("");
+        setDeleteConfirmName("");
+        setDeleteModalOpen(true);
+    }
+
+    function closeDeleteDriverModal() {
+        if (busy) return;
+        setDeleteModalOpen(false);
+        setDeleteConfirmName("");
+        setDeleteError("");
+    }
+
+    async function handleDeleteDriver() {
+        if (!id || !driver) return;
+        const expectedFullName = `${driver.first_name} ${driver.last_name}`.trim();
+        const matches = normalizeNameForCompare(deleteConfirmName) === normalizeNameForCompare(expectedFullName);
+        if (!matches) return;
+
+        setBusy(true);
+        setDeleteError("");
+        try {
+            await api.deleteDriver(id, deleteConfirmName);
+            setDeleteModalOpen(false);
+            navigate("/drivers");
+        } catch (error) {
+            setDeleteError(error instanceof Error ? error.message : "Failed to delete driver");
+        } finally {
+            setBusy(false);
+        }
+    }
+
     async function handleAssignmentSubmit(e: React.FormEvent) {
         e.preventDefault();
         if (!id || !assignmentForm.license_plate || !assignmentForm.start_at) return;
@@ -683,6 +722,10 @@ export default function DriverDetail() {
     if (!driver) {
         return <div style={{ padding: "var(--space-4)", color: "var(--dark-gray)" }}>Driver not found</div>;
     }
+
+    const expectedDeleteName = `${driver.first_name} ${driver.last_name}`.trim();
+    const deleteNameMatches =
+        normalizeNameForCompare(deleteConfirmName) === normalizeNameForCompare(expectedDeleteName);
 
     const renderBillingBadge = (statusValue: Driver["billing_status"]) => {
         const map: Record<Driver["billing_status"], { bg: string; color: string; label: string }> = {
@@ -992,6 +1035,27 @@ export default function DriverDetail() {
                             </button>
                         );
                     })}
+
+                    <button
+                        disabled={busy}
+                        onClick={openDeleteDriverModal}
+                        style={{
+                            marginTop: "4px",
+                            padding: "8px 12px",
+                            background: "#F8D7DA",
+                            border: "1px solid #ca5f6b",
+                            borderRadius: "var(--radius-small)",
+                            color: "#721C24",
+                            fontWeight: 700,
+                            cursor: busy ? "not-allowed" : "pointer",
+                            opacity: busy ? 0.75 : 1,
+                        }}
+                    >
+                        Delete Driver
+                    </button>
+                    <div style={{ fontSize: "0.72rem", color: "var(--dark-gray)", opacity: 0.7 }}>
+                        Permanent action. Requires full-name confirmation.
+                    </div>
 
                     <hr style={{ border: "none", borderTop: "1px solid var(--light-gray)" }} />
                     <div style={{ fontSize: "0.75rem", opacity: 0.7 }}>Driver Portal</div>
@@ -1493,6 +1557,91 @@ export default function DriverDetail() {
                     </table>
                 )}
             </div>
+
+            {deleteModalOpen && (
+                <div
+                    style={{
+                        position: "fixed",
+                        inset: 0,
+                        background: "rgba(0, 0, 0, 0.5)",
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        zIndex: 1200,
+                        padding: "16px",
+                    }}
+                    onClick={(e) => {
+                        if (e.target === e.currentTarget) {
+                            closeDeleteDriverModal();
+                        }
+                    }}
+                >
+                    <div
+                        style={{
+                            width: "100%",
+                            maxWidth: "520px",
+                            background: "var(--white)",
+                            borderRadius: "var(--radius-standard)",
+                            boxShadow: "0 8px 32px rgba(0, 0, 0, 0.2)",
+                            padding: "var(--space-4)",
+                        }}
+                    >
+                        <h3 style={{ fontFamily: "var(--font-heading)", fontSize: "1.125rem", color: "#721C24", marginBottom: "8px" }}>
+                            Delete Driver
+                        </h3>
+                        <p style={{ color: "var(--dark-gray)", marginBottom: "8px" }}>
+                            This will permanently delete this driver and related data.
+                        </p>
+                        <p style={{ color: "var(--dark-gray)", marginBottom: "var(--space-2)" }}>
+                            Type exactly: <strong>{expectedDeleteName}</strong>
+                        </p>
+                        <input
+                            style={inputStyle}
+                            value={deleteConfirmName}
+                            onChange={(e) => setDeleteConfirmName(e.target.value)}
+                            placeholder="First Name Last Name"
+                        />
+                        {deleteError && (
+                            <div style={{ marginTop: "8px", color: "var(--error-red)", fontSize: "0.875rem" }}>
+                                {deleteError}
+                            </div>
+                        )}
+                        <div style={{ display: "flex", justifyContent: "flex-end", gap: "8px", marginTop: "var(--space-3)" }}>
+                            <button
+                                type="button"
+                                disabled={busy}
+                                onClick={closeDeleteDriverModal}
+                                style={{
+                                    padding: "8px 12px",
+                                    borderRadius: "var(--radius-small)",
+                                    border: "1px solid var(--medium-gray)",
+                                    background: "var(--light-gray)",
+                                    color: "var(--dark-gray)",
+                                    cursor: busy ? "not-allowed" : "pointer",
+                                }}
+                            >
+                                Cancel
+                            </button>
+                            <button
+                                type="button"
+                                disabled={busy || !deleteNameMatches}
+                                onClick={handleDeleteDriver}
+                                style={{
+                                    padding: "8px 12px",
+                                    borderRadius: "var(--radius-small)",
+                                    border: "none",
+                                    background: busy || !deleteNameMatches ? "var(--medium-gray)" : "var(--error-red)",
+                                    color: "var(--white)",
+                                    fontWeight: 700,
+                                    cursor: busy || !deleteNameMatches ? "not-allowed" : "pointer",
+                                }}
+                            >
+                                {busy ? "Deleting..." : "Delete Driver"}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
     );
 }
