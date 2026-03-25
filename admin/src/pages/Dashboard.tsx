@@ -24,10 +24,16 @@ interface Driver {
     balance: number;
 }
 
+interface DriversPagePayload {
+    items: Driver[];
+    active_count: number;
+}
+
 export default function Dashboard() {
     const [stats, setStats] = useState<Stats | null>(null);
     const [applications, setApplications] = useState<Application[]>([]);
     const [drivers, setDrivers] = useState<Driver[]>([]);
+    const [activeDriversCount, setActiveDriversCount] = useState(0);
     const [loading, setLoading] = useState(true);
 
     useEffect(() => {
@@ -36,14 +42,17 @@ export default function Dashboard() {
 
     async function loadData() {
         try {
-            const [statsData, appsData, driversData] = await Promise.all([
-                api.getPaymentStats('weekly'),
+            const [statsData, appsData, driversPageData] = await Promise.all([
+                api.getPaymentStats(),
                 api.getApplications('pending'),
-                api.getDrivers(),
+                api.getDriversPage({ page: 1, pageSize: 20 }),
             ]);
+            const driversPage = driversPageData as DriversPagePayload;
+            const driverItems = Array.isArray(driversPage?.items) ? driversPage.items : [];
             setStats(statsData);
             setApplications(appsData.slice(0, 5));
-            setDrivers(driversData.slice(0, 5));
+            setDrivers(driverItems.slice(0, 5));
+            setActiveDriversCount(Number(driversPage?.active_count || 0));
         } catch (error) {
             console.error('Failed to load dashboard data:', error);
         } finally {
@@ -91,7 +100,7 @@ export default function Dashboard() {
                     borderRadius: 'var(--radius-standard)',
                 }}>
                     <div style={{ fontSize: '0.75rem', color: 'rgba(255,255,255,0.8)', marginBottom: '4px' }}>
-                        Total Payments
+                        Total Amount
                     </div>
                     <div style={{ fontSize: '1.5rem', fontWeight: 700, fontFamily: 'var(--font-heading)', color: 'var(--white)' }}>
                         ${stats?.total_amount?.toLocaleString() || 0}
@@ -115,7 +124,7 @@ export default function Dashboard() {
                     borderRadius: 'var(--radius-standard)',
                 }}>
                     <div style={{ fontSize: '0.75rem', color: 'rgba(255,255,255,0.8)', marginBottom: '4px' }}>
-                        Pending Review
+                        Unmatched Payments
                     </div>
                     <div style={{ fontSize: '1.5rem', fontWeight: 700, fontFamily: 'var(--font-heading)', color: 'var(--white)' }}>
                         {stats?.unmatched_payments || 0}
@@ -131,7 +140,7 @@ export default function Dashboard() {
                         Active Drivers
                     </div>
                     <div style={{ fontSize: '1.5rem', fontWeight: 700, fontFamily: 'var(--font-heading)', color: 'var(--dark-gray)' }}>
-                        {drivers.length}
+                        {activeDriversCount}
                     </div>
                 </div>
             </div>

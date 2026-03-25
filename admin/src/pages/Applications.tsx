@@ -202,30 +202,6 @@ export default function Applications() {
                     {loading ? "Loading..." : `Showing ${firstRowIndex}-${lastRowIndex} of ${total}`}
                 </div>
                 <div style={{ display: "flex", gap: "var(--space-2)", alignItems: "center" }}>
-                    <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-                        <span style={{ fontSize: "0.875rem", color: "var(--dark-gray)", opacity: 0.8 }}>Rows:</span>
-                        <select
-                            value={pageSize}
-                            onChange={(e) => {
-                                setPageSize(Number(e.target.value));
-                                setPage(1);
-                            }}
-                            style={{
-                                minWidth: "86px",
-                                height: "38px",
-                                padding: "0 10px",
-                                border: "1px solid var(--medium-gray)",
-                                borderRadius: "var(--radius-small)",
-                                background: "var(--white)",
-                                color: "var(--dark-gray)",
-                                fontSize: "0.95rem",
-                                fontWeight: 500,
-                            }}
-                        >
-                            <option value={20}>20</option>
-                            <option value={50}>50</option>
-                        </select>
-                    </div>
                     <button
                         onClick={handleBackfillDrivers}
                         disabled={syncing}
@@ -380,43 +356,68 @@ export default function Applications() {
             <div
                 style={{
                     display: "flex",
-                    justifyContent: "flex-end",
+                    justifyContent: "space-between",
                     alignItems: "center",
                     gap: "8px",
                     marginTop: "var(--space-3)",
+                    flexWrap: "wrap",
                 }}
             >
-                <button
-                    onClick={() => setPage((p) => Math.max(1, p - 1))}
-                    disabled={loading || page <= 1}
-                    style={{
-                        padding: "6px 10px",
-                        borderRadius: "var(--radius-small)",
-                        border: "1px solid var(--medium-gray)",
-                        background: "var(--white)",
-                        cursor: loading || page <= 1 ? "not-allowed" : "pointer",
-                        opacity: loading || page <= 1 ? 0.6 : 1,
-                    }}
-                >
-                    Prev
-                </button>
-                <span style={{ fontSize: "0.875rem", color: "var(--dark-gray)" }}>
-                    Page {page} / {totalPages}
-                </span>
-                <button
-                    onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
-                    disabled={loading || page >= totalPages}
-                    style={{
-                        padding: "6px 10px",
-                        borderRadius: "var(--radius-small)",
-                        border: "1px solid var(--medium-gray)",
-                        background: "var(--white)",
-                        cursor: loading || page >= totalPages ? "not-allowed" : "pointer",
-                        opacity: loading || page >= totalPages ? 0.6 : 1,
-                    }}
-                >
-                    Next
-                </button>
+                <label style={{ fontSize: "0.8125rem", color: "var(--dark-gray)", opacity: 0.8 }}>
+                    Rows
+                    <select
+                        value={pageSize}
+                        onChange={(e) => {
+                            setPageSize(Number(e.target.value));
+                            setPage(1);
+                        }}
+                        style={{
+                            marginLeft: "6px",
+                            padding: "7px 10px",
+                            border: "1px solid var(--medium-gray)",
+                            borderRadius: "var(--radius-small)",
+                            background: "var(--white)",
+                            color: "var(--dark-gray)",
+                            fontWeight: 500,
+                        }}
+                    >
+                        <option value={20}>20</option>
+                        <option value={50}>50</option>
+                    </select>
+                </label>
+                <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                    <button
+                        onClick={() => setPage((p) => Math.max(1, p - 1))}
+                        disabled={loading || page <= 1}
+                        style={{
+                            padding: "6px 10px",
+                            borderRadius: "var(--radius-small)",
+                            border: "1px solid var(--medium-gray)",
+                            background: "var(--white)",
+                            cursor: loading || page <= 1 ? "not-allowed" : "pointer",
+                            opacity: loading || page <= 1 ? 0.6 : 1,
+                        }}
+                    >
+                        Prev
+                    </button>
+                    <span style={{ fontSize: "0.875rem", color: "var(--dark-gray)" }}>
+                        Page {page} / {totalPages}
+                    </span>
+                    <button
+                        onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+                        disabled={loading || page >= totalPages}
+                        style={{
+                            padding: "6px 10px",
+                            borderRadius: "var(--radius-small)",
+                            border: "1px solid var(--medium-gray)",
+                            background: "var(--white)",
+                            cursor: loading || page >= totalPages ? "not-allowed" : "pointer",
+                            opacity: loading || page >= totalPages ? 0.6 : 1,
+                        }}
+                    >
+                        Next
+                    </button>
+                </div>
             </div>
         </div>
     );
