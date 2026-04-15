@@ -12,14 +12,18 @@ from app.models import (
     Application,
     ApplicationComment,
     ApplicationStatus,
+    Alias,
     BillingStatus,
     Driver,
+    DriverVehicleAssignment,
     Ledger,
+    PaymentRaw,
+    SmsLog,
     Staff,
 )
 from app.services.billing import default_weekly_due_day, normalize_weekly_due_day
 from app.schemas import (
-    ApplicationCreate, ApplicationResponse, ApplicationStatusUpdate,
+    ApplicationCreate, ApplicationReconcileUndoRequest, ApplicationResponse, ApplicationStatusUpdate,
     CommentCreate, CommentResponse
 )
 
@@ -288,14 +292,87 @@ def backfill_drivers_for_approved(
     )
 
     processed_ids: list[str] = []
+    processed_driver_ids: list[str] = []
     for application in applications:
-        _ensure_driver_for_application(application, db)
+        driver = _ensure_driver_for_application(application, db)
         processed_ids.append(str(application.id))
+        processed_driver_ids.append(str(driver.id))
 
     db.commit()
     return {
         "processed": len(processed_ids),
         "application_ids": processed_ids,
+        "driver_ids": processed_driver_ids,
+    }
+
+
+@router.post("/reconcile/drivers/undo")
+def undo_backfill_drivers(
+    request: ApplicationReconcileUndoRequest,
+    db: Session = Depends(get_db),
+    current_user: Staff = Depends(get_current_user),
+):
+    application_ids = list(dict.fromkeys(request.application_ids))
+    driver_ids = set(request.driver_ids)
+
+    if not application_ids:
+        return {
+            "reverted_applications": 0,
+            "deleted_drivers": 0,
+            "application_ids": [],
+            "driver_ids": [],
+        }
+
+    applications = db.query(Application).filter(Application.id.in_(application_ids)).all()
+
+    detached_application_ids: list[str] = []
+    candidate_driver_ids = set(driver_ids)
+
+    for application in applications:
+        if application.driver_id is None:
+            continue
+        if driver_ids and application.driver_id not in driver_ids:
+            continue
+        candidate_driver_ids.add(application.driver_id)
+        application.driver_id = None
+        detached_application_ids.append(str(application.id))
+
+    deleted_driver_ids: list[str] = []
+    retained_driver_ids: list[str] = []
+
+    for driver_id in candidate_driver_ids:
+        if db.query(Application).filter(Application.driver_id == driver_id).first():
+            retained_driver_ids.append(str(driver_id))
+            continue
+        if db.query(Ledger).filter(Ledger.driver_id == driver_id).first():
+            retained_driver_ids.append(str(driver_id))
+            continue
+        if db.query(Alias).filter(Alias.driver_id == driver_id).first():
+            retained_driver_ids.append(str(driver_id))
+            continue
+        if db.query(PaymentRaw).filter(PaymentRaw.driver_id == driver_id).first():
+            retained_driver_ids.append(str(driver_id))
+            continue
+        if db.query(SmsLog).filter(SmsLog.driver_id == driver_id).first():
+            retained_driver_ids.append(str(driver_id))
+            continue
+        if db.query(DriverVehicleAssignment).filter(DriverVehicleAssignment.driver_id == driver_id).first():
+            retained_driver_ids.append(str(driver_id))
+            continue
+
+        driver = db.query(Driver).filter(Driver.id == driver_id).first()
+        if driver:
+            db.delete(driver)
+            deleted_driver_ids.append(str(driver_id))
+
+    db.commit()
+
+    return {
+        "reverted_applications": len(detached_application_ids),
+        "deleted_drivers": len(deleted_driver_ids),
+        "retained_drivers": len(retained_driver_ids),
+        "application_ids": detached_application_ids,
+        "driver_ids": deleted_driver_ids,
     }
 
 

@@ -102,6 +102,11 @@ class ApplicationStatusUpdate(BaseModel):
     message: Optional[str] = None
 
 
+class ApplicationReconcileUndoRequest(BaseModel):
+    application_ids: list[UUID]
+    driver_ids: list[UUID] = []
+
+
 class CommentCreate(BaseModel):
     content: str
 

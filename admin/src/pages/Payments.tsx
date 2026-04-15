@@ -172,7 +172,6 @@ export default function Payments() {
                                 <th style={{ padding: 'var(--space-2) var(--space-3)', textAlign: 'left', color: 'var(--dark-gray)', fontWeight: 600, fontSize: '0.75rem' }}>Memo</th>
                                 <th style={{ padding: 'var(--space-2) var(--space-3)', textAlign: 'left', color: 'var(--dark-gray)', fontWeight: 600, fontSize: '0.75rem' }}>Date</th>
                                 <th style={{ padding: 'var(--space-2) var(--space-3)', textAlign: 'right', color: 'var(--dark-gray)', fontWeight: 600, fontSize: '0.75rem' }}>Amount</th>
-                                <th style={{ padding: 'var(--space-2) var(--space-3)', textAlign: 'left', color: 'var(--dark-gray)', fontWeight: 600, fontSize: '0.75rem' }}>Status</th>
                                 <th style={{ padding: 'var(--space-2) var(--space-3)', textAlign: 'left', color: 'var(--dark-gray)', fontWeight: 600, fontSize: '0.75rem' }}>Driver</th>
                             </tr>
                         </thead>
@@ -216,19 +215,6 @@ export default function Payments() {
                                         </td>
                                         <td style={{ padding: 'var(--space-2) var(--space-3)', textAlign: 'right', fontWeight: 600, color: 'var(--success-green)' }}>
                                             ${payment.amount.toFixed(2)}
-                                        </td>
-                                        <td style={{ padding: 'var(--space-2) var(--space-3)' }}>
-                                            <span style={{
-                                                display: 'inline-block',
-                                                padding: '4px 8px',
-                                                borderRadius: '9999px',
-                                                fontSize: '0.75rem',
-                                                fontWeight: 600,
-                                                background: payment.matched ? '#DCFCE7' : '#FEF3C7',
-                                                color: payment.matched ? '#15803D' : '#B45309',
-                                            }}>
-                                                {payment.matched ? 'Matched' : 'Unmatched'}
-                                            </span>
                                         </td>
                                         <td style={{ padding: 'var(--space-2) var(--space-3)' }}>
                                             <select

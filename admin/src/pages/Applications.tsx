@@ -48,6 +48,8 @@ export default function Applications() {
     const [totalPages, setTotalPages] = useState(1);
     const [error, setError] = useState("");
     const [syncMessage, setSyncMessage] = useState("");
+    const [undoContext, setUndoContext] = useState<{ applicationIds: string[]; driverIds: string[] } | null>(null);
+    const [undoingSync, setUndoingSync] = useState(false);
 
     useEffect(() => {
         loadApplications();
@@ -86,16 +88,42 @@ export default function Applications() {
     async function handleBackfillDrivers() {
         setSyncing(true);
         setSyncMessage("");
+        setUndoContext(null);
         try {
             const result = await api.backfillApplicationDrivers();
             const processed = Number(result?.processed || 0);
-            setSyncMessage(`Linked ${processed} application(s) to drivers.`);
+            const applicationIds = Array.isArray(result?.application_ids) ? result.application_ids.map(String) : [];
+            const driverIds = Array.isArray(result?.driver_ids) ? result.driver_ids.map(String) : [];
+            if (processed > 0) {
+                setSyncMessage(`Linked ${processed} application(s) to drivers.`);
+                setUndoContext({ applicationIds, driverIds });
+            } else {
+                setSyncMessage("No approved applications needed linking.");
+            }
             await loadApplications();
         } catch (backfillError) {
             console.error("Failed to backfill approved applications:", backfillError);
             setSyncMessage(backfillError instanceof Error ? backfillError.message : "Failed to reconcile applications");
         } finally {
             setSyncing(false);
+        }
+    }
+
+    async function handleUndoBackfill() {
+        if (!undoContext) return;
+        setUndoingSync(true);
+        try {
+            const result = await api.undoBackfillApplicationDrivers(undoContext.applicationIds, undoContext.driverIds);
+            const reverted = Number(result?.reverted_applications || 0);
+            const deletedDrivers = Number(result?.deleted_drivers || 0);
+            setSyncMessage(`Cancelled sync: reverted ${reverted} application(s), removed ${deletedDrivers} driver(s).`);
+            setUndoContext(null);
+            await loadApplications();
+        } catch (undoError) {
+            console.error("Failed to undo reconciliation:", undoError);
+            setSyncMessage(undoError instanceof Error ? undoError.message : "Failed to cancel reconciliation");
+        } finally {
+            setUndoingSync(false);
         }
     }
 
@@ -233,9 +261,34 @@ export default function Applications() {
                         border: "1px solid #bcd2ff",
                         color: "#1a4f9c",
                         fontSize: "0.875rem",
+                        display: "flex",
+                        justifyContent: "space-between",
+                        alignItems: "center",
+                        gap: "10px",
+                        flexWrap: "wrap",
                     }}
                 >
-                    {syncMessage}
+                    <span>{syncMessage}</span>
+                    {undoContext && (
+                        <button
+                            onClick={handleUndoBackfill}
+                            disabled={undoingSync}
+                            style={{
+                                height: "30px",
+                                padding: "0 12px",
+                                border: "1px solid #7aa3f2",
+                                borderRadius: "var(--radius-small)",
+                                background: "var(--white)",
+                                color: "#1a4f9c",
+                                cursor: undoingSync ? "not-allowed" : "pointer",
+                                opacity: undoingSync ? 0.7 : 1,
+                                fontWeight: 600,
+                                fontSize: "0.8125rem",
+                            }}
+                        >
+                            {undoingSync ? "Cancelling..." : "Cancel"}
+                        </button>
+                    )}
                 </div>
             )}
 

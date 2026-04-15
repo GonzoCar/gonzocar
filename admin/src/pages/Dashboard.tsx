@@ -1,318 +1,649 @@
-import { useEffect, useState } from 'react';
-import { Link } from 'react-router-dom';
-import api from '../services/api';
+import { useEffect, useMemo, useState } from "react";
+import { Link } from "react-router-dom";
 
-interface Stats {
+import api from "../services/api";
+
+interface PaymentStats {
     total_payments: number;
     matched_payments: number;
     unmatched_payments: number;
     total_amount: number;
+    matched_amount?: number;
 }
 
-interface Application {
+interface PaymentRecord {
+    id: string;
+    source: string;
+    amount: number;
+    sender_name: string | null;
+    memo: string | null;
+    received_at: string;
+    matched: boolean;
+    driver_id: string | null;
+}
+
+interface ApplicationRecord {
     id: string;
     status: string;
-    form_data: Record<string, any>;
+    driver_id?: string | null;
+    form_data: Record<string, unknown>;
     created_at: string;
 }
 
-interface Driver {
+interface ApplicationsPagePayload {
+    items: ApplicationRecord[];
+    counts: Record<string, number>;
+}
+
+interface DriverRecord {
     id: string;
     first_name: string;
     last_name: string;
     email: string;
     balance: number;
+    billing_type?: string;
+    billing_status?: string;
+    billing_active?: boolean;
+    weekly_due_day?: string | null;
 }
 
 interface DriversPagePayload {
-    items: Driver[];
+    items: DriverRecord[];
+    total: number;
     active_count: number;
+    balance_total: number;
+}
+
+interface SystemStatusItem {
+    status: "ok" | "warning" | "error";
+    message: string;
+}
+
+interface SystemStatus {
+    database: SystemStatusItem;
+    gmail: SystemStatusItem;
+    openphone: SystemStatusItem;
+}
+
+const DEFAULT_COUNTS: Record<string, number> = {
+    all: 0,
+    pending: 0,
+    approved: 0,
+    declined: 0,
+    hold: 0,
+    onboarding: 0,
+};
+
+const sourceBadgeStyles: Record<string, { bg: string; color: string }> = {
+    zelle: { bg: "#EAF1FF", color: "#315FB9" },
+    cashapp: { bg: "#E5F7E9", color: "#1C8F49" },
+    venmo: { bg: "#E7F1FF", color: "#1D5CB6" },
+    chime: { bg: "#E6FBF7", color: "#1A8D7D" },
+    stripe: { bg: "#F0EBFF", color: "#6A4ACF" },
+};
+
+function asNumber(value: unknown): number {
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function formatCurrency(value: number): string {
+    return `$${value.toLocaleString("en-US", {
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2,
+    })}`;
+}
+
+function displayStatus(status?: string, active?: boolean): "active" | "paused" | "terminated" {
+    const normalized = (status || "").toLowerCase();
+    if (normalized === "active" || normalized === "paused" || normalized === "terminated") {
+        return normalized;
+    }
+    return active === false ? "paused" : "active";
+}
+
+function applicationName(application: ApplicationRecord): string {
+    const form = application.form_data || {};
+    const first = typeof form.first_name === "string" ? form.first_name : "";
+    const last = typeof form.last_name === "string" ? form.last_name : "";
+    const direct = `${first} ${last}`.trim();
+    if (direct) return direct;
+
+    for (const [key, value] of Object.entries(form)) {
+        if (!key.toLowerCase().includes("name") || typeof value !== "object" || value === null) continue;
+        const nested = value as Record<string, unknown>;
+        const nestedFirst =
+            (typeof nested.first_name === "string" && nested.first_name) ||
+            (typeof nested.First_Name === "string" && nested.First_Name) ||
+            (typeof nested.first === "string" && nested.first) ||
+            "";
+        const nestedLast =
+            (typeof nested.last_name === "string" && nested.last_name) ||
+            (typeof nested.Last_Name === "string" && nested.Last_Name) ||
+            (typeof nested.last === "string" && nested.last) ||
+            "";
+        const nestedName = `${nestedFirst} ${nestedLast}`.trim();
+        if (nestedName) return nestedName;
+    }
+
+    if (typeof form.email === "string" && form.email.trim()) {
+        return form.email;
+    }
+
+    return "Unknown Applicant";
+}
+
+function SourceBadge({ source }: { source: string }) {
+    const key = String(source || "").toLowerCase();
+    const style = sourceBadgeStyles[key] || sourceBadgeStyles.zelle;
+
+    return (
+        <span
+            style={{
+                display: "inline-block",
+                padding: "3px 9px",
+                borderRadius: "999px",
+                background: style.bg,
+                color: style.color,
+                fontSize: "0.72rem",
+                fontWeight: 700,
+                textTransform: "uppercase",
+                letterSpacing: "0.02em",
+            }}
+        >
+            {key || "payment"}
+        </span>
+    );
+}
+
+function HealthPill({ item }: { item: SystemStatusItem }) {
+    const tone =
+        item.status === "ok"
+            ? { bg: "#E7F6ED", color: "#1C7A46" }
+            : item.status === "warning"
+                ? { bg: "#FEF5DF", color: "#9A6A00" }
+                : { bg: "#FDEBEC", color: "#A5363E" };
+
+    return (
+        <span
+            style={{
+                display: "inline-flex",
+                alignItems: "center",
+                gap: "6px",
+                padding: "4px 10px",
+                borderRadius: "999px",
+                background: tone.bg,
+                color: tone.color,
+                fontSize: "0.72rem",
+                fontWeight: 700,
+                textTransform: "capitalize",
+            }}
+        >
+            <span
+                style={{
+                    width: "6px",
+                    height: "6px",
+                    borderRadius: "999px",
+                    background: tone.color,
+                }}
+            />
+            {item.status}
+        </span>
+    );
+}
+
+function MetricCard({
+    label,
+    value,
+    hint,
+}: {
+    label: string;
+    value: string;
+    hint?: string;
+}) {
+    return (
+        <div
+            style={{
+                background: "linear-gradient(160deg, #ffffff 0%, #f8fafc 100%)",
+                border: "1px solid #e5e9ef",
+                borderRadius: "18px",
+                padding: "14px 16px",
+                boxShadow: "0 8px 24px rgba(20, 40, 60, 0.05)",
+            }}
+        >
+            <div style={{ fontSize: "0.72rem", color: "#67758A", marginBottom: "6px", textTransform: "uppercase", letterSpacing: "0.04em" }}>
+                {label}
+            </div>
+            <div style={{ fontFamily: "var(--font-heading)", fontSize: "1.5rem", color: "#1B2430", lineHeight: 1.1 }}>{value}</div>
+            {hint && <div style={{ marginTop: "6px", fontSize: "0.78rem", color: "#6C7A8E" }}>{hint}</div>}
+        </div>
+    );
 }
 
 export default function Dashboard() {
-    const [stats, setStats] = useState<Stats | null>(null);
-    const [applications, setApplications] = useState<Application[]>([]);
-    const [drivers, setDrivers] = useState<Driver[]>([]);
-    const [activeDriversCount, setActiveDriversCount] = useState(0);
     const [loading, setLoading] = useState(true);
+    const [error, setError] = useState("");
+
+    const [paymentStats, setPaymentStats] = useState<PaymentStats | null>(null);
+    const [weeklyPaymentStats, setWeeklyPaymentStats] = useState<PaymentStats | null>(null);
+    const [payments, setPayments] = useState<PaymentRecord[]>([]);
+
+    const [driversPage, setDriversPage] = useState<DriversPagePayload | null>(null);
+    const [drivers, setDrivers] = useState<DriverRecord[]>([]);
+
+    const [applicationsPage, setApplicationsPage] = useState<ApplicationsPagePayload | null>(null);
+    const [systemStatus, setSystemStatus] = useState<SystemStatus | null>(null);
 
     useEffect(() => {
         loadData();
     }, []);
 
     async function loadData() {
+        setLoading(true);
+        setError("");
+
         try {
-            const [statsData, appsData, driversPageData] = await Promise.all([
+            const [
+                paymentsOverall,
+                paymentsWeekly,
+                allPayments,
+                driversSnapshot,
+                allDrivers,
+                pendingApplications,
+                status,
+            ] = await Promise.all([
                 api.getPaymentStats(),
-                api.getApplications('pending'),
-                api.getDriversPage({ page: 1, pageSize: 20 }),
+                api.getPaymentStats("weekly"),
+                api.getAllPayments(0, 200),
+                api.getDriversPage({ page: 1, pageSize: 50 }),
+                api.getDrivers(),
+                api.getApplicationsPage({
+                    statusFilter: "pending",
+                    page: 1,
+                    pageSize: 8,
+                    excludeLinkedDrivers: true,
+                }),
+                api.getSystemStatus(),
             ]);
-            const driversPage = driversPageData as DriversPagePayload;
-            const driverItems = Array.isArray(driversPage?.items) ? driversPage.items : [];
-            setStats(statsData);
-            setApplications(appsData.slice(0, 5));
-            setDrivers(driverItems.slice(0, 5));
-            setActiveDriversCount(Number(driversPage?.active_count || 0));
-        } catch (error) {
-            console.error('Failed to load dashboard data:', error);
+
+            setPaymentStats(paymentsOverall as PaymentStats);
+            setWeeklyPaymentStats(paymentsWeekly as PaymentStats);
+            setPayments(Array.isArray(allPayments) ? (allPayments as PaymentRecord[]) : []);
+            setDriversPage(driversSnapshot as DriversPagePayload);
+            setDrivers(Array.isArray(allDrivers) ? (allDrivers as DriverRecord[]) : []);
+            setApplicationsPage(pendingApplications as ApplicationsPagePayload);
+            setSystemStatus(status as SystemStatus);
+        } catch (loadError) {
+            console.error("Failed to load dashboard data:", loadError);
+            setError(loadError instanceof Error ? loadError.message : "Failed to load dashboard");
         } finally {
             setLoading(false);
         }
     }
 
+    const chicagoWeekday = useMemo(() => {
+        return new Intl.DateTimeFormat("en-US", {
+            weekday: "long",
+            timeZone: "America/Chicago",
+        })
+            .format(new Date())
+            .toLowerCase();
+    }, []);
+
+    const driverTotals = useMemo(() => {
+        const totals = {
+            total: 0,
+            active: 0,
+            paused: 0,
+            terminated: 0,
+            daily: 0,
+            weekly: 0,
+            weeklyDueToday: 0,
+        };
+
+        for (const driver of drivers) {
+            totals.total += 1;
+            const status = displayStatus(driver.billing_status, driver.billing_active);
+            if (status === "active") totals.active += 1;
+            if (status === "paused") totals.paused += 1;
+            if (status === "terminated") totals.terminated += 1;
+
+            const billingType = (driver.billing_type || "daily").toLowerCase();
+            if (billingType === "weekly") {
+                totals.weekly += 1;
+                if (status === "active" && (driver.weekly_due_day || "") === chicagoWeekday) {
+                    totals.weeklyDueToday += 1;
+                }
+            } else {
+                totals.daily += 1;
+            }
+        }
+
+        return totals;
+    }, [drivers, chicagoWeekday]);
+
+    const counts = useMemo(() => {
+        return { ...DEFAULT_COUNTS, ...(applicationsPage?.counts || {}) };
+    }, [applicationsPage]);
+
+    const recentPendingApplications = useMemo(() => {
+        return Array.isArray(applicationsPage?.items) ? applicationsPage!.items.slice(0, 6) : [];
+    }, [applicationsPage]);
+
+    const unmatchedQueue = useMemo(() => {
+        return payments
+            .filter((payment) => !payment.matched)
+            .sort((a, b) => new Date(b.received_at).getTime() - new Date(a.received_at).getTime())
+            .slice(0, 7);
+    }, [payments]);
+
+    const unmatchedAmount = useMemo(() => {
+        return unmatchedQueue.reduce((sum, payment) => sum + asNumber(payment.amount), 0);
+    }, [unmatchedQueue]);
+
+    const matchedRate = useMemo(() => {
+        const total = asNumber(paymentStats?.total_payments);
+        if (!total) return 0;
+        return Math.round((asNumber(paymentStats?.matched_payments) / total) * 100);
+    }, [paymentStats]);
+
+    const lowestBalances = useMemo(() => {
+        const sorted = [...(driversPage?.items || [])].sort((a, b) => asNumber(a.balance) - asNumber(b.balance));
+        return sorted.slice(0, 6);
+    }, [driversPage]);
+
+    const snapshotTopGap = unmatchedAmount - asNumber(weeklyPaymentStats?.matched_amount || 0);
+
     if (loading) {
-        return <div style={{ padding: 'var(--space-4)', color: 'var(--dark-gray)' }}>Loading dashboard...</div>;
+        return <div style={{ padding: "var(--space-4)", color: "var(--dark-gray)" }}>Loading dashboard...</div>;
     }
 
-    const statusColors: Record<string, { bg: string; text: string }> = {
-        pending: { bg: '#FFF3CD', text: '#856404' },
-        approved: { bg: '#D4EDDA', text: '#155724' },
-        declined: { bg: '#F8D7DA', text: '#721C24' },
-    };
+    if (error) {
+        return <div style={{ padding: "var(--space-4)", color: "var(--error-red)" }}>{error}</div>;
+    }
 
     return (
-        <div style={{ padding: 'var(--space-4)' }}>
-            {/* Header */}
-            <div style={{ marginBottom: 'var(--space-4)' }}>
-                <h1 style={{
-                    fontFamily: 'var(--font-heading)',
-                    fontSize: '1.75rem',
-                    color: 'var(--dark-gray)',
-                    marginBottom: 'var(--space-1)',
-                }}>
-                    Dashboard
-                </h1>
-                <p style={{ color: 'var(--dark-gray)', opacity: 0.7 }}>
-                    Overview of your fleet operations
-                </p>
-            </div>
-
-            {/* Stats Grid */}
-            <div style={{
-                display: 'grid',
-                gridTemplateColumns: 'repeat(4, 1fr)',
-                gap: 'var(--space-2)',
-                marginBottom: 'var(--space-4)',
-            }}>
-                <div style={{
-                    padding: 'var(--space-3)',
-                    background: 'var(--primary-blue)',
-                    borderRadius: 'var(--radius-standard)',
-                }}>
-                    <div style={{ fontSize: '0.75rem', color: 'rgba(255,255,255,0.8)', marginBottom: '4px' }}>
-                        Total Amount
+        <div style={{ padding: "var(--space-4)", display: "flex", flexDirection: "column", gap: "var(--space-4)" }}>
+            <div
+                style={{
+                    position: "relative",
+                    overflow: "hidden",
+                    borderRadius: "24px",
+                    border: "1px solid #d7deea",
+                    background: "radial-gradient(circle at 90% 20%, #dce9ff 0%, #edf2fb 38%, #f8fbff 100%)",
+                    boxShadow: "0 16px 44px rgba(28, 47, 73, 0.10)",
+                    padding: "24px",
+                }}
+            >
+                <div style={{ display: "flex", justifyContent: "space-between", gap: "20px", flexWrap: "wrap" }}>
+                    <div>
+                        <div style={{ fontFamily: "var(--font-heading)", fontSize: "2rem", lineHeight: 1, color: "#1C2430", marginBottom: "8px" }}>
+                            Operations Command
+                        </div>
+                        <div style={{ color: "#5E6D84", fontSize: "0.95rem" }}>
+                            Chicago billing day: <strong style={{ textTransform: "capitalize", color: "#2D415D" }}>{chicagoWeekday}</strong>
+                        </div>
                     </div>
-                    <div style={{ fontSize: '1.5rem', fontWeight: 700, fontFamily: 'var(--font-heading)', color: 'var(--white)' }}>
-                        ${stats?.total_amount?.toLocaleString() || 0}
-                    </div>
-                </div>
-                <div style={{
-                    padding: 'var(--space-3)',
-                    background: 'var(--success-green)',
-                    borderRadius: 'var(--radius-standard)',
-                }}>
-                    <div style={{ fontSize: '0.75rem', color: 'rgba(255,255,255,0.8)', marginBottom: '4px' }}>
-                        Matched Payments
-                    </div>
-                    <div style={{ fontSize: '1.5rem', fontWeight: 700, fontFamily: 'var(--font-heading)', color: 'var(--white)' }}>
-                        {stats?.matched_payments || 0}
-                    </div>
-                </div>
-                <div style={{
-                    padding: 'var(--space-3)',
-                    background: '#F59E0B',
-                    borderRadius: 'var(--radius-standard)',
-                }}>
-                    <div style={{ fontSize: '0.75rem', color: 'rgba(255,255,255,0.8)', marginBottom: '4px' }}>
-                        Unmatched Payments
-                    </div>
-                    <div style={{ fontSize: '1.5rem', fontWeight: 700, fontFamily: 'var(--font-heading)', color: 'var(--white)' }}>
-                        {stats?.unmatched_payments || 0}
-                    </div>
-                </div>
-                <div style={{
-                    padding: 'var(--space-3)',
-                    background: 'var(--white)',
-                    border: '1px solid var(--medium-gray)',
-                    borderRadius: 'var(--radius-standard)',
-                }}>
-                    <div style={{ fontSize: '0.75rem', color: 'var(--dark-gray)', opacity: 0.6, marginBottom: '4px' }}>
-                        Active Drivers
-                    </div>
-                    <div style={{ fontSize: '1.5rem', fontWeight: 700, fontFamily: 'var(--font-heading)', color: 'var(--dark-gray)' }}>
-                        {activeDriversCount}
+                    <div style={{ display: "flex", gap: "12px", flexWrap: "wrap" }}>
+                        <MetricCard
+                            label="Collected (All Time)"
+                            value={formatCurrency(asNumber(paymentStats?.total_amount))}
+                            hint={`${asNumber(paymentStats?.total_payments)} total payments`}
+                        />
+                        <MetricCard
+                            label="Weekly Collected"
+                            value={formatCurrency(asNumber(weeklyPaymentStats?.matched_amount || 0))}
+                            hint="Current weekly window"
+                        />
+                        <MetricCard
+                            label="Unmatched Queue"
+                            value={formatCurrency(unmatchedAmount)}
+                            hint={`${unmatchedQueue.length} newest pending items`}
+                        />
                     </div>
                 </div>
             </div>
 
-            {/* Two Column Grid */}
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 'var(--space-4)' }}>
-                {/* Pending Applications */}
-                <div style={{
-                    background: 'var(--white)',
-                    borderRadius: 'var(--radius-standard)',
-                    boxShadow: '0 2px 8px rgba(0, 0, 0, 0.08)',
-                    overflow: 'hidden',
-                }}>
-                    <div style={{
-                        display: 'flex',
-                        justifyContent: 'space-between',
-                        alignItems: 'center',
-                        padding: 'var(--space-3)',
-                        borderBottom: '1px solid var(--light-gray)',
-                    }}>
-                        <h3 style={{ fontFamily: 'var(--font-heading)', fontSize: '1rem', color: 'var(--dark-gray)' }}>
-                            Pending Applications
-                        </h3>
-                        <Link
-                            to="/applications"
-                            style={{
-                                padding: '4px 12px',
-                                background: 'var(--light-gray)',
-                                border: '1px solid var(--medium-gray)',
-                                borderRadius: 'var(--radius-small)',
-                                color: 'var(--dark-gray)',
-                                textDecoration: 'none',
-                                fontSize: '0.75rem',
-                            }}
-                        >
-                            View All
+            <div
+                style={{
+                    display: "grid",
+                    gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
+                    gap: "12px",
+                }}
+            >
+                <MetricCard
+                    label="Drivers Active"
+                    value={String(driverTotals.active)}
+                    hint={`${driverTotals.paused} paused, ${driverTotals.terminated} terminated`}
+                />
+                <MetricCard
+                    label="Weekly Due Today"
+                    value={String(driverTotals.weeklyDueToday)}
+                    hint={`${driverTotals.weekly} weekly / ${driverTotals.daily} daily`}
+                />
+                <MetricCard
+                    label="Vetting Pending"
+                    value={String(asNumber(counts.pending))}
+                    hint={`${asNumber(counts.approved)} approved, ${asNumber(counts.declined)} declined`}
+                />
+                <MetricCard
+                    label="Auto-Match Rate"
+                    value={`${matchedRate}%`}
+                    hint={`${asNumber(paymentStats?.matched_payments)} matched / ${asNumber(paymentStats?.unmatched_payments)} unmatched`}
+                />
+            </div>
+
+            <div
+                style={{
+                    display: "grid",
+                    gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))",
+                    gap: "12px",
+                }}
+            >
+                <div
+                    style={{
+                        background: "var(--white)",
+                        border: "1px solid #e1e6ef",
+                        borderRadius: "20px",
+                        padding: "16px",
+                        boxShadow: "0 8px 20px rgba(19, 34, 56, 0.05)",
+                    }}
+                >
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "10px" }}>
+                        <div style={{ fontFamily: "var(--font-heading)", color: "#1D2836", fontSize: "1.05rem" }}>Unmatched Queue</div>
+                        <Link to="/payments" style={{ fontSize: "0.8rem", color: "var(--primary-blue)", textDecoration: "none", fontWeight: 600 }}>
+                            Open Payments
                         </Link>
                     </div>
-                    {applications.length === 0 ? (
-                        <div style={{ padding: 'var(--space-4)', textAlign: 'center', color: 'var(--dark-gray)', opacity: 0.6 }}>
-                            No pending applications
-                        </div>
+
+                    {unmatchedQueue.length === 0 ? (
+                        <div style={{ padding: "12px 4px", color: "#6D7C92", fontSize: "0.9rem" }}>Queue is clear.</div>
                     ) : (
-                        <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-                            <thead>
-                                <tr style={{ background: 'var(--light-gray)' }}>
-                                    <th style={{ padding: 'var(--space-2) var(--space-3)', textAlign: 'left', color: 'var(--dark-gray)', fontWeight: 600, fontSize: '0.75rem' }}>Name</th>
-                                    <th style={{ padding: 'var(--space-2) var(--space-3)', textAlign: 'left', color: 'var(--dark-gray)', fontWeight: 600, fontSize: '0.75rem' }}>Date</th>
-                                    <th style={{ padding: 'var(--space-2) var(--space-3)', textAlign: 'left', color: 'var(--dark-gray)', fontWeight: 600, fontSize: '0.75rem' }}>Status</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                {applications.map((app) => {
-                                    const statusStyle = statusColors[app.status] || statusColors.pending;
-                                    return (
-                                        <tr key={app.id} style={{ borderTop: '1px solid var(--light-gray)' }}>
-                                            <td style={{ padding: 'var(--space-2) var(--space-3)' }}>
-                                                <Link to={`/applications/${app.id}`} style={{ color: 'var(--primary-blue)', textDecoration: 'none', fontWeight: 500 }}>
-                                                    {(() => {
-                                                        const fd = app.form_data || {};
-                                                        if (fd.first_name || fd.last_name) return `${fd.first_name || ''} ${fd.last_name || ''}`;
-
-                                                        // Deep search for names
-                                                        let namesObj: any = null;
-                                                        for (const key of Object.keys(fd)) {
-                                                            if (key.toLowerCase().includes('name') && typeof (fd as any)[key] === 'object') {
-                                                                namesObj = (fd as any)[key];
-                                                                break;
-                                                            }
-                                                        }
-                                                        if (namesObj) {
-                                                            const f = namesObj.first_name || namesObj.First_Name || namesObj.first || '';
-                                                            const l = namesObj.last_name || namesObj.Last_Name || namesObj.last || '';
-                                                            if (f || l) return `${f} ${l}`;
-                                                        }
-
-                                                        return fd.email || 'Unknown Applicant';
-                                                    })()}
-                                                </Link>
-                                            </td>
-                                            <td style={{ padding: 'var(--space-2) var(--space-3)', color: 'var(--dark-gray)', fontSize: '0.875rem' }}>
-                                                {new Date(app.created_at).toLocaleDateString()}
-                                            </td>
-                                            <td style={{ padding: 'var(--space-2) var(--space-3)' }}>
-                                                <span style={{
-                                                    padding: '2px 8px',
-                                                    background: statusStyle.bg,
-                                                    color: statusStyle.text,
-                                                    borderRadius: '4px',
-                                                    fontSize: '0.75rem',
-                                                    fontWeight: 500,
-                                                    textTransform: 'capitalize',
-                                                }}>
-                                                    {app.status}
-                                                </span>
-                                            </td>
-                                        </tr>
-                                    );
-                                })}
-                            </tbody>
-                        </table>
+                        <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
+                            {unmatchedQueue.map((payment) => (
+                                <div
+                                    key={payment.id}
+                                    style={{
+                                        display: "grid",
+                                        gridTemplateColumns: "auto 1fr auto",
+                                        gap: "10px",
+                                        alignItems: "center",
+                                        padding: "10px",
+                                        borderRadius: "12px",
+                                        background: "#F7F9FD",
+                                        border: "1px solid #e8edf5",
+                                    }}
+                                >
+                                    <SourceBadge source={payment.source} />
+                                    <div style={{ minWidth: 0 }}>
+                                        <div style={{ color: "#253142", fontWeight: 600, fontSize: "0.86rem", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                                            {payment.sender_name || "Unknown Sender"}
+                                        </div>
+                                        <div style={{ color: "#6C7B91", fontSize: "0.78rem", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                                            {payment.memo || "No memo"}
+                                        </div>
+                                    </div>
+                                    <div style={{ textAlign: "right" }}>
+                                        <div style={{ color: "#B45309", fontWeight: 700, fontSize: "0.86rem" }}>{formatCurrency(asNumber(payment.amount))}</div>
+                                        <div style={{ color: "#7A889D", fontSize: "0.72rem" }}>
+                                            {new Date(payment.received_at).toLocaleDateString()}
+                                        </div>
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
                     )}
                 </div>
 
-                {/* Driver Balances */}
-                <div style={{
-                    background: 'var(--white)',
-                    borderRadius: 'var(--radius-standard)',
-                    boxShadow: '0 2px 8px rgba(0, 0, 0, 0.08)',
-                    overflow: 'hidden',
-                }}>
-                    <div style={{
-                        display: 'flex',
-                        justifyContent: 'space-between',
-                        alignItems: 'center',
-                        padding: 'var(--space-3)',
-                        borderBottom: '1px solid var(--light-gray)',
-                    }}>
-                        <h3 style={{ fontFamily: 'var(--font-heading)', fontSize: '1rem', color: 'var(--dark-gray)' }}>
-                            Driver Balances
-                        </h3>
-                        <Link
-                            to="/drivers"
-                            style={{
-                                padding: '4px 12px',
-                                background: 'var(--light-gray)',
-                                border: '1px solid var(--medium-gray)',
-                                borderRadius: 'var(--radius-small)',
-                                color: 'var(--dark-gray)',
-                                textDecoration: 'none',
-                                fontSize: '0.75rem',
-                            }}
-                        >
-                            View All
+                <div
+                    style={{
+                        background: "var(--white)",
+                        border: "1px solid #e1e6ef",
+                        borderRadius: "20px",
+                        padding: "16px",
+                        boxShadow: "0 8px 20px rgba(19, 34, 56, 0.05)",
+                    }}
+                >
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "10px" }}>
+                        <div style={{ fontFamily: "var(--font-heading)", color: "#1D2836", fontSize: "1.05rem" }}>Driver Exposure</div>
+                        <Link to="/drivers" style={{ fontSize: "0.8rem", color: "var(--primary-blue)", textDecoration: "none", fontWeight: 600 }}>
+                            Open Drivers
                         </Link>
                     </div>
-                    {drivers.length === 0 ? (
-                        <div style={{ padding: 'var(--space-4)', textAlign: 'center', color: 'var(--dark-gray)', opacity: 0.6 }}>
-                            No drivers yet
-                        </div>
+
+                    {lowestBalances.length === 0 ? (
+                        <div style={{ padding: "12px 4px", color: "#6D7C92", fontSize: "0.9rem" }}>No drivers found.</div>
                     ) : (
-                        <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-                            <thead>
-                                <tr style={{ background: 'var(--light-gray)' }}>
-                                    <th style={{ padding: 'var(--space-2) var(--space-3)', textAlign: 'left', color: 'var(--dark-gray)', fontWeight: 600, fontSize: '0.75rem' }}>Driver</th>
-                                    <th style={{ padding: 'var(--space-2) var(--space-3)', textAlign: 'right', color: 'var(--dark-gray)', fontWeight: 600, fontSize: '0.75rem' }}>Balance</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                {drivers.map((driver) => (
-                                    <tr key={driver.id} style={{ borderTop: '1px solid var(--light-gray)' }}>
-                                        <td style={{ padding: 'var(--space-2) var(--space-3)' }}>
-                                            <Link to={`/drivers/${driver.id}`} style={{ color: 'var(--primary-blue)', textDecoration: 'none', fontWeight: 500 }}>
-                                                {driver.first_name || driver.last_name
-                                                    ? `${driver.first_name} ${driver.last_name}`.trim()
-                                                    : <span style={{ opacity: 0.6, fontStyle: 'italic' }}>{driver.email?.split('@')[0] || driver.email}</span>
-                                                }
-                                            </Link>
-                                        </td>
-                                        <td style={{
-                                            padding: 'var(--space-2) var(--space-3)',
-                                            textAlign: 'right',
-                                            fontWeight: 600,
-                                            color: (driver.balance || 0) >= 0 ? 'var(--success-green)' : 'var(--error-red)',
-                                        }}>
-                                            ${driver.balance?.toFixed(2) || '0.00'}
-                                        </td>
-                                    </tr>
-                                ))}
-                            </tbody>
-                        </table>
+                        <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
+                            {lowestBalances.map((driver) => {
+                                const balance = asNumber(driver.balance);
+                                return (
+                                    <div
+                                        key={driver.id}
+                                        style={{
+                                            display: "grid",
+                                            gridTemplateColumns: "1fr auto",
+                                            gap: "10px",
+                                            alignItems: "center",
+                                            padding: "10px",
+                                            borderRadius: "12px",
+                                            background: "#F7F9FD",
+                                            border: "1px solid #e8edf5",
+                                        }}
+                                    >
+                                        <Link
+                                            to={`/drivers/${driver.id}`}
+                                            style={{ color: "#253142", fontWeight: 600, textDecoration: "none", fontSize: "0.86rem" }}
+                                        >
+                                            {(driver.first_name || driver.last_name)
+                                                ? `${driver.first_name || ""} ${driver.last_name || ""}`.trim()
+                                                : driver.email}
+                                        </Link>
+                                        <span style={{ color: balance >= 0 ? "#1C8F49" : "#B3261E", fontWeight: 700, fontSize: "0.86rem" }}>
+                                            {formatCurrency(balance)}
+                                        </span>
+                                    </div>
+                                );
+                            })}
+                        </div>
                     )}
+                </div>
+
+                <div
+                    style={{
+                        background: "var(--white)",
+                        border: "1px solid #e1e6ef",
+                        borderRadius: "20px",
+                        padding: "16px",
+                        boxShadow: "0 8px 20px rgba(19, 34, 56, 0.05)",
+                    }}
+                >
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "10px" }}>
+                        <div style={{ fontFamily: "var(--font-heading)", color: "#1D2836", fontSize: "1.05rem" }}>Vetting Funnel</div>
+                        <Link to="/applications" style={{ fontSize: "0.8rem", color: "var(--primary-blue)", textDecoration: "none", fontWeight: 600 }}>
+                            Open Vetting Hub
+                        </Link>
+                    </div>
+
+                    <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0,1fr))", gap: "8px", marginBottom: "10px" }}>
+                        <MetricCard label="All" value={String(asNumber(counts.all))} />
+                        <MetricCard label="Pending" value={String(asNumber(counts.pending))} />
+                        <MetricCard label="Approved" value={String(asNumber(counts.approved))} />
+                        <MetricCard label="Declined" value={String(asNumber(counts.declined))} />
+                    </div>
+
+                    <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
+                        {recentPendingApplications.length === 0 ? (
+                            <div style={{ color: "#6D7C92", fontSize: "0.9rem" }}>No pending applications.</div>
+                        ) : (
+                            recentPendingApplications.map((application) => (
+                                <Link
+                                    key={application.id}
+                                    to={`/applications/${application.id}`}
+                                    style={{
+                                        display: "grid",
+                                        gridTemplateColumns: "1fr auto",
+                                        gap: "10px",
+                                        alignItems: "center",
+                                        padding: "10px",
+                                        borderRadius: "12px",
+                                        background: "#F7F9FD",
+                                        border: "1px solid #e8edf5",
+                                        color: "#253142",
+                                        textDecoration: "none",
+                                    }}
+                                >
+                                    <span style={{ fontSize: "0.84rem", fontWeight: 600, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                                        {applicationName(application)}
+                                    </span>
+                                    <span style={{ fontSize: "0.75rem", color: "#6C7B91" }}>{new Date(application.created_at).toLocaleDateString()}</span>
+                                </Link>
+                            ))
+                        )}
+                    </div>
+                </div>
+            </div>
+
+            <div
+                style={{
+                    background: "var(--white)",
+                    border: "1px solid #e1e6ef",
+                    borderRadius: "20px",
+                    padding: "16px",
+                    boxShadow: "0 8px 20px rgba(19, 34, 56, 0.05)",
+                }}
+            >
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "10px", flexWrap: "wrap", gap: "10px" }}>
+                    <div style={{ fontFamily: "var(--font-heading)", color: "#1D2836", fontSize: "1.05rem" }}>System Readiness</div>
+                    <div style={{ fontSize: "0.82rem", color: "#6B7B92" }}>
+                        Snapshot gap: {formatCurrency(snapshotTopGap)} (queue minus weekly matched)
+                    </div>
+                </div>
+
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: "10px" }}>
+                    {[
+                        { label: "Database", item: systemStatus?.database },
+                        { label: "Gmail Parser", item: systemStatus?.gmail },
+                        { label: "OpenPhone", item: systemStatus?.openphone },
+                    ].map(({ label, item }) => (
+                        <div
+                            key={label}
+                            style={{
+                                border: "1px solid #e4eaf3",
+                                borderRadius: "14px",
+                                padding: "12px",
+                                background: "#FAFCFF",
+                            }}
+                        >
+                            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "8px" }}>
+                                <div style={{ fontWeight: 700, fontSize: "0.86rem", color: "#2A3648" }}>{label}</div>
+                                {item ? <HealthPill item={item} /> : <span style={{ fontSize: "0.75rem", color: "#7A889D" }}>N/A</span>}
+                            </div>
+                            <div style={{ fontSize: "0.78rem", color: "#627286", lineHeight: 1.4 }}>
+                                {item?.message || "Status unavailable"}
+                            </div>
+                        </div>
+                    ))}
                 </div>
             </div>
         </div>

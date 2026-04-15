@@ -591,7 +591,8 @@ def update_driver(
             driver.billing_status = BillingStatus.paused
         del update_data["billing_active"]
 
-    deposit_fields = {"deposit_required", "deposit_posted"}
+    # deposit_updated_at should track when deposit was posted, not when required amount changes
+    deposit_fields = {"deposit_posted"}
     if any(field in update_data for field in deposit_fields) and "deposit_updated_at" not in update_data:
         driver.deposit_updated_at = datetime.utcnow()
 

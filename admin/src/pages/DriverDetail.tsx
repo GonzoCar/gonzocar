@@ -395,6 +395,10 @@ export default function DriverDetail() {
         if (!driver || !id) return;
         setBusy(true);
         try {
+            const nextDepositPosted = Number(profileForm.deposit_posted || 0);
+            const currentDepositPosted = Number(driver.deposit_posted || 0);
+            const shouldUpdateDepositPostedDate = nextDepositPosted !== currentDepositPosted;
+
             await api.updateDriver(id, {
                 first_name: profileForm.first_name.trim(),
                 last_name: profileForm.last_name.trim(),
@@ -404,8 +408,8 @@ export default function DriverDetail() {
                 billing_rate: Number(profileForm.billing_rate || 0),
                 weekly_due_day: profileForm.billing_type === "weekly" ? profileForm.weekly_due_day : null,
                 deposit_required: Number(profileForm.deposit_required || 0),
-                deposit_posted: Number(profileForm.deposit_posted || 0),
-                deposit_updated_at: new Date().toISOString(),
+                deposit_posted: nextDepositPosted,
+                ...(shouldUpdateDepositPostedDate ? { deposit_updated_at: new Date().toISOString() } : {}),
             });
             setIsEditingProfile(false);
             await loadData();
@@ -1029,9 +1033,11 @@ export default function DriverDetail() {
                             </div>
                             <div>
                                 <div style={{ fontSize: "0.75rem", opacity: 0.7 }}>Deposit Posted</div>
-                                <div>${Number(driver.deposit_posted || 0).toFixed(2)}</div>
-                                <div style={{ fontSize: "0.75rem", opacity: 0.6 }}>
-                                    Updated: {driver.deposit_updated_at ? new Date(driver.deposit_updated_at).toLocaleString() : "-"}
+                                <div style={{ display: "flex", gap: "8px", alignItems: "baseline", flexWrap: "wrap" }}>
+                                    <span>${Number(driver.deposit_posted || 0).toFixed(2)}</span>
+                                    <span style={{ fontSize: "0.75rem", opacity: 0.6 }}>
+                                        Date: {driver.deposit_updated_at ? new Date(driver.deposit_updated_at).toLocaleDateString() : "-"}
+                                    </span>
                                 </div>
                             </div>
                         </div>

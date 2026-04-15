@@ -384,6 +384,19 @@ class ApiService {
         return response.json();
     }
 
+    async undoBackfillApplicationDrivers(applicationIds: string[], driverIds: string[] = []) {
+        const response = await fetch(`${API_URL}/applications/reconcile/drivers/undo`, {
+            method: "POST",
+            headers: this.headers(),
+            body: JSON.stringify({
+                application_ids: applicationIds,
+                driver_ids: driverIds,
+            }),
+        });
+        if (!response.ok) throw await this.parseError(response, "Failed to undo reconciliation");
+        return response.json();
+    }
+
     async getApplication(id: string) {
         const response = await fetch(`${API_URL}/applications/${id}`, { headers: this.headers() });
         if (!response.ok) throw await this.parseError(response, "Failed to fetch application");
