@@ -2,7 +2,7 @@ import uuid
 from datetime import datetime
 from sqlalchemy import (
     Column, String, Boolean, Numeric, Text, DateTime,
-    ForeignKey, Enum, LargeBinary, Index, func
+    ForeignKey, Enum, LargeBinary, Index, Integer, func
 )
 from sqlalchemy.dialects.postgresql import UUID, JSONB
 from sqlalchemy.orm import relationship
@@ -184,6 +184,19 @@ class PaymentRaw(Base):
 
     # Relationships
     driver = relationship("Driver", back_populates="payments")
+
+
+class PaymentParserRun(Base):
+    __tablename__ = "payment_parser_runs"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    triggered_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    finished_at = Column(DateTime, nullable=True)
+    success = Column(Boolean, default=False, nullable=False)
+    lookback_hours = Column(Integer, nullable=True)
+    max_results = Column(Integer, nullable=True)
+    trigger_source = Column(String(50), nullable=False, default="railway-cron")
+    error_message = Column(Text, nullable=True)
 
 
 class Ledger(Base):
