@@ -9,7 +9,7 @@ if (!cronToken) {
   throw new Error("INTERNAL_CRON_TOKEN is not configured");
 }
 
-const triggerUrl = new URL("/api/status/run-payment-parser", backendUrl).toString();
+const triggerUrl = new URL("/api/status/run-midnight-billing", backendUrl).toString();
 
 const response = await fetch(triggerUrl, {
   method: "POST",
@@ -23,7 +23,7 @@ const response = await fetch(triggerUrl, {
 
 const bodyText = await response.text();
 if (!response.ok) {
-  throw new Error(`Parser trigger failed (${response.status}): ${bodyText}`);
+  throw new Error(`Billing trigger failed (${response.status}): ${bodyText}`);
 }
 
-console.log(`Parser trigger success: ${bodyText}`);
+console.log(`Billing trigger success: ${bodyText}`);

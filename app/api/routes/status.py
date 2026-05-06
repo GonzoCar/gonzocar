@@ -27,6 +27,28 @@ PARSER_MISS_HISTORY_LIMIT = 20
 PARSER_MISS_SCAN_LIMIT = 5000
 
 
+def _validate_internal_cron_token(
+    authorization: str | None,
+    x_cron_token: str | None,
+) -> None:
+    settings = get_settings()
+    expected_token = (settings.internal_cron_token or "").strip()
+    if not expected_token:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Internal cron token not configured",
+        )
+
+    provided_token = (x_cron_token or "").strip()
+    if not provided_token and authorization:
+        auth_value = authorization.strip()
+        if auth_value.lower().startswith("bearer "):
+            provided_token = auth_value[7:].strip()
+
+    if provided_token != expected_token:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid cron token")
+
+
 @router.get("")
 def get_system_status(
     db: Session = Depends(get_db),
@@ -53,22 +75,7 @@ def run_payment_parser(
     Trigger payment parser from Railway cron function.
     Protected by INTERNAL_CRON_TOKEN.
     """
-    settings = get_settings()
-    expected_token = (settings.internal_cron_token or "").strip()
-    if not expected_token:
-        raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="Internal cron token not configured",
-        )
-
-    provided_token = (x_cron_token or "").strip()
-    if not provided_token and authorization:
-        auth_value = authorization.strip()
-        if auth_value.lower().startswith("bearer "):
-            provided_token = auth_value[7:].strip()
-
-    if provided_token != expected_token:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid cron token")
+    _validate_internal_cron_token(authorization, x_cron_token)
 
     last_created_at = get_last_payment_created_at(db)
 
@@ -119,6 +126,38 @@ def run_payment_parser(
         "lookback_hours": hours,
         "max_results": max_results,
         "last_payment_created_at": last_created_at.isoformat() if last_created_at else None,
+    }
+
+
+@router.post("/run-midnight-billing")
+def run_midnight_billing(
+    authorization: str | None = Header(default=None),
+    x_cron_token: str | None = Header(default=None),
+    x_cron_source: str | None = Header(default=None),
+):
+    """
+    Trigger midnight billing job from Railway cron function.
+    Protected by INTERNAL_CRON_TOKEN.
+    """
+    _validate_internal_cron_token(authorization, x_cron_token)
+    trigger_source = (x_cron_source or "railway-cron").strip()[:50] or "railway-cron"
+    started_at = datetime.utcnow()
+
+    try:
+        from scripts.midnight_billing import run_billing
+
+        run_billing()
+    except Exception as exc:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Billing run failed: {str(exc)[:240]}",
+        ) from exc
+
+    return {
+        "ok": True,
+        "trigger_source": trigger_source,
+        "started_at": started_at.isoformat(),
+        "executed_at": datetime.utcnow().isoformat(),
     }
 
 
