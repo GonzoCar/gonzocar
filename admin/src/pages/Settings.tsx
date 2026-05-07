@@ -27,6 +27,38 @@ interface SystemStatus {
             delay_minutes: number;
         }>;
     };
+    billing_cron?: {
+        status: string;
+        message: string;
+        tracking_started_at: string;
+        expected_interval_minutes: number;
+        grace_minutes: number;
+        window_hours: number;
+        health_score_24h: number;
+        last_run_at: string | null;
+        last_success_at: string | null;
+        last_charge_window_run_at: string | null;
+        last_error: string | null;
+        total_runs: number;
+        failed_runs_24h: number;
+        missed_windows_24h: number;
+        currently_late: boolean;
+        current_delay_minutes: number;
+        recent_runs: Array<{
+            triggered_at: string | null;
+            finished_at: string | null;
+            success: boolean;
+            result_status: string | null;
+            within_charge_window: boolean | null;
+            active_drivers: number | null;
+            daily_debits: number | null;
+            weekly_debits: number | null;
+            late_drivers: number | null;
+            sms_sent: number | null;
+            sms_failed: number | null;
+            error_message: string | null;
+        }>;
+    };
 }
 
 export default function Settings() {
@@ -104,6 +136,7 @@ export default function Settings() {
     }
 
     const parserHealth = status?.payment_parser;
+    const billingHealth = status?.billing_cron;
 
     return (
         <div style={{ padding: 'var(--space-4)' }}>
@@ -239,6 +272,10 @@ export default function Settings() {
                             <span style={{ color: 'var(--dark-gray)' }}>Payment Parser Cron</span>
                             {getStatusBadge(initialLoading ? undefined : parserHealth)}
                         </div>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                            <span style={{ color: 'var(--dark-gray)' }}>Billing Charges Cron</span>
+                            {getStatusBadge(initialLoading ? undefined : billingHealth)}
+                        </div>
                     </div>
                 </div>
 
@@ -346,6 +383,129 @@ export default function Settings() {
                                             </td>
                                             <td style={{ padding: 'var(--space-2)', color: 'var(--dark-gray)', fontSize: '0.875rem' }}>{item.delay_minutes} min</td>
                                             <td style={{ padding: 'var(--space-2)', color: 'var(--dark-gray)', fontSize: '0.875rem', fontWeight: 600 }}>{item.missed_intervals}</td>
+                                        </tr>
+                                    ))}
+                                </tbody>
+                            </table>
+                        )}
+                    </div>
+                </div>
+
+                {/* Billing Cron Monitor */}
+                <div style={{
+                    gridColumn: 'span 2',
+                    background: 'var(--white)',
+                    borderRadius: 'var(--radius-standard)',
+                    boxShadow: '0 2px 8px rgba(0, 0, 0, 0.08)',
+                    overflow: 'hidden',
+                }}>
+                    <div style={{ padding: 'var(--space-3)', borderBottom: '1px solid var(--light-gray)' }}>
+                        <h3 style={{
+                            fontFamily: 'var(--font-heading)',
+                            fontSize: '1rem',
+                            color: 'var(--dark-gray)',
+                            marginBottom: '6px',
+                        }}>
+                            Billing Cron Monitor
+                        </h3>
+                        <div style={{ color: 'var(--dark-gray)', opacity: 0.75, fontSize: '0.875rem' }}>
+                            Hourly trigger, charges execute only in 5 PM Chicago window
+                        </div>
+                    </div>
+
+                    <div style={{ padding: 'var(--space-3)', borderBottom: '1px solid var(--light-gray)' }}>
+                        <div style={{
+                            display: 'grid',
+                            gridTemplateColumns: 'repeat(4, minmax(0, 1fr))',
+                            gap: 'var(--space-2)',
+                        }}>
+                            <div style={{ border: '1px solid var(--light-gray)', borderRadius: 'var(--radius-small)', padding: 'var(--space-2)' }}>
+                                <div style={{ fontSize: '0.75rem', textTransform: 'uppercase', color: 'var(--dark-gray)', opacity: 0.65, marginBottom: '4px' }}>
+                                    Last Run
+                                </div>
+                                <div style={{ color: 'var(--dark-gray)', fontWeight: 600, fontSize: '0.875rem' }}>
+                                    {initialLoading ? 'Loading...' : formatDateTime(billingHealth?.last_run_at)}
+                                </div>
+                            </div>
+                            <div style={{ border: '1px solid var(--light-gray)', borderRadius: 'var(--radius-small)', padding: 'var(--space-2)' }}>
+                                <div style={{ fontSize: '0.75rem', textTransform: 'uppercase', color: 'var(--dark-gray)', opacity: 0.65, marginBottom: '4px' }}>
+                                    Last Charge Window
+                                </div>
+                                <div style={{ color: 'var(--dark-gray)', fontWeight: 600, fontSize: '0.875rem' }}>
+                                    {initialLoading ? 'Loading...' : formatDateTime(billingHealth?.last_charge_window_run_at)}
+                                </div>
+                            </div>
+                            <div style={{ border: '1px solid var(--light-gray)', borderRadius: 'var(--radius-small)', padding: 'var(--space-2)' }}>
+                                <div style={{ fontSize: '0.75rem', textTransform: 'uppercase', color: 'var(--dark-gray)', opacity: 0.65, marginBottom: '4px' }}>
+                                    24h Health
+                                </div>
+                                <div style={{ color: 'var(--dark-gray)', fontWeight: 600, fontSize: '1rem' }}>
+                                    {initialLoading ? '...' : `${billingHealth?.health_score_24h ?? 0}%`}
+                                </div>
+                            </div>
+                            <div style={{ border: '1px solid var(--light-gray)', borderRadius: 'var(--radius-small)', padding: 'var(--space-2)' }}>
+                                <div style={{ fontSize: '0.75rem', textTransform: 'uppercase', color: 'var(--dark-gray)', opacity: 0.65, marginBottom: '4px' }}>
+                                    24h Failed / Missed
+                                </div>
+                                <div style={{ color: 'var(--dark-gray)', fontWeight: 600, fontSize: '1rem' }}>
+                                    {initialLoading ? '...' : `${billingHealth?.failed_runs_24h ?? 0} / ${billingHealth?.missed_windows_24h ?? 0}`}
+                                </div>
+                            </div>
+                        </div>
+
+                        {!initialLoading && billingHealth?.currently_late && (
+                            <div style={{
+                                marginTop: 'var(--space-2)',
+                                padding: 'var(--space-2)',
+                                borderRadius: 'var(--radius-small)',
+                                border: '1px solid #f5c6cb',
+                                background: '#f8d7da',
+                                color: '#721c24',
+                                fontSize: '0.875rem',
+                                fontWeight: 600,
+                            }}>
+                                Billing cron is currently late by {billingHealth.current_delay_minutes} minutes.
+                            </div>
+                        )}
+                    </div>
+
+                    <div style={{ padding: 'var(--space-3)' }}>
+                        {initialLoading ? (
+                            <div style={{ color: 'var(--dark-gray)', opacity: 0.7 }}>Loading billing history...</div>
+                        ) : !billingHealth || billingHealth.recent_runs.length === 0 ? (
+                            <div style={{ color: 'var(--dark-gray)', opacity: 0.7 }}>
+                                No billing runs recorded yet.
+                            </div>
+                        ) : (
+                            <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                                <thead>
+                                    <tr style={{ background: 'var(--light-gray)' }}>
+                                        <th style={{ padding: 'var(--space-2)', textAlign: 'left', color: 'var(--dark-gray)', fontSize: '0.75rem', fontWeight: 600 }}>Triggered At</th>
+                                        <th style={{ padding: 'var(--space-2)', textAlign: 'left', color: 'var(--dark-gray)', fontSize: '0.75rem', fontWeight: 600 }}>Result</th>
+                                        <th style={{ padding: 'var(--space-2)', textAlign: 'left', color: 'var(--dark-gray)', fontSize: '0.75rem', fontWeight: 600 }}>Debits</th>
+                                        <th style={{ padding: 'var(--space-2)', textAlign: 'left', color: 'var(--dark-gray)', fontSize: '0.75rem', fontWeight: 600 }}>SMS</th>
+                                        <th style={{ padding: 'var(--space-2)', textAlign: 'left', color: 'var(--dark-gray)', fontSize: '0.75rem', fontWeight: 600 }}>Error</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {billingHealth.recent_runs.map((item, index) => (
+                                        <tr key={`${item.triggered_at || 'run'}-${index}`} style={{ borderTop: '1px solid var(--light-gray)' }}>
+                                            <td style={{ padding: 'var(--space-2)', color: 'var(--dark-gray)', fontSize: '0.875rem' }}>
+                                                {formatDateTime(item.triggered_at)}
+                                            </td>
+                                            <td style={{ padding: 'var(--space-2)', color: 'var(--dark-gray)', fontSize: '0.875rem' }}>
+                                                {item.result_status || (item.success ? 'completed' : 'failed')}
+                                                {item.within_charge_window ? ' (charge window)' : ' (outside window)'}
+                                            </td>
+                                            <td style={{ padding: 'var(--space-2)', color: 'var(--dark-gray)', fontSize: '0.875rem' }}>
+                                                D:{item.daily_debits ?? 0} / W:{item.weekly_debits ?? 0}
+                                            </td>
+                                            <td style={{ padding: 'var(--space-2)', color: 'var(--dark-gray)', fontSize: '0.875rem' }}>
+                                                Sent {item.sms_sent ?? 0}, Failed {item.sms_failed ?? 0}
+                                            </td>
+                                            <td style={{ padding: 'var(--space-2)', color: 'var(--dark-gray)', fontSize: '0.875rem' }}>
+                                                {item.error_message || '—'}
+                                            </td>
                                         </tr>
                                     ))}
                                 </tbody>

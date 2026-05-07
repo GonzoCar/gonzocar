@@ -182,7 +182,7 @@ def check_late_payments(db: Session, drivers: list[Driver]) -> list[tuple]:
     return late_drivers
 
 
-def send_late_payment_sms(db: Session, driver: Driver, balance: Decimal, days_late: int) -> bool:
+def send_late_payment_sms(db: Session, driver: Driver, balance: Decimal, days_late: int) -> str:
     """Send late payment SMS and log it."""
     # Check if we already sent SMS today
     today = datetime.utcnow().date()
@@ -193,7 +193,7 @@ def send_late_payment_sms(db: Session, driver: Driver, balance: Decimal, days_la
     
     if existing_sms:
         print(f"  Already sent SMS today to {driver.first_name} {driver.last_name}")
-        return False
+        return "skipped"
     
     # Prepare message
     message = SmsTemplates.late_payment(
@@ -222,17 +222,33 @@ def send_late_payment_sms(db: Session, driver: Driver, balance: Decimal, days_la
     else:
         print(f"  Failed to send SMS to {driver.first_name} {driver.last_name}: {result.error}")
     
-    return result.success
+    return "sent" if result.success else "failed"
 
 
-def run_billing():
+def run_billing() -> dict:
     """Main billing job."""
     print(f"[{datetime.now()}] Starting billing job")
+    summary: dict[str, object] = {
+        "status": "started",
+        "within_charge_window": False,
+        "chicago_now": None,
+        "active_drivers": 0,
+        "daily_debits": 0,
+        "weekly_debits": 0,
+        "late_drivers": 0,
+        "sms_sent": 0,
+        "sms_failed": 0,
+        "sms_skipped": 0,
+    }
     now_local = datetime.now(CHICAGO_TZ)
+    summary["chicago_now"] = now_local.isoformat()
     print(f"Chicago local time: {now_local.isoformat()}")
-    if not is_charge_window(now_local, target_hour=17):
+    within_charge_window = is_charge_window(now_local, target_hour=17)
+    summary["within_charge_window"] = within_charge_window
+    if not within_charge_window:
         print("Outside 5 PM Chicago charge window. Skipping billing run.")
-        return
+        summary["status"] = "skipped_outside_window"
+        return summary
     
     db = get_db()
     
@@ -244,21 +260,26 @@ def run_billing():
                 (Driver.billing_status.is_(None) & (Driver.billing_active == True)),
             )
         ).all()
+        summary["active_drivers"] = len(drivers)
         print(f"Found {len(drivers)} active drivers")
         
         if not drivers:
             print("No active drivers, exiting")
-            return
+            summary["status"] = "no_active_drivers"
+            return summary
         
         # Create debit entries
         print("\n--- Creating Debit Entries ---")
         daily_count = create_daily_debits(db, drivers, now_local)
         weekly_count = create_weekly_debits(db, drivers, now_local)
+        summary["daily_debits"] = daily_count
+        summary["weekly_debits"] = weekly_count
         print(f"Created {daily_count} daily debits, {weekly_count} weekly debits")
         
         # Check for late payments
         print("\n--- Checking Late Payments ---")
         late_drivers = check_late_payments(db, drivers)
+        summary["late_drivers"] = len(late_drivers)
         print(f"Found {len(late_drivers)} late drivers")
         
         # Send SMS reminders
@@ -266,14 +287,24 @@ def run_billing():
             print("\n--- Sending SMS Reminders ---")
             for driver, balance, days_late in late_drivers:
                 print(f"  {driver.first_name} {driver.last_name}: ${balance:.2f} ({days_late} days late)")
-                send_late_payment_sms(db, driver, balance, days_late)
+                sms_result = send_late_payment_sms(db, driver, balance, days_late)
+                if sms_result == "sent":
+                    summary["sms_sent"] = int(summary["sms_sent"]) + 1
+                elif sms_result == "failed":
+                    summary["sms_failed"] = int(summary["sms_failed"]) + 1
+                else:
+                    summary["sms_skipped"] = int(summary["sms_skipped"]) + 1
         
         # Commit all changes
         db.commit()
+        summary["status"] = "completed"
         print(f"\n[{datetime.now()}] Billing job completed successfully")
+        return summary
         
     except Exception as e:
         db.rollback()
+        summary["status"] = "failed"
+        summary["error"] = str(e)
         print(f"Error during billing: {e}")
         raise
     finally:

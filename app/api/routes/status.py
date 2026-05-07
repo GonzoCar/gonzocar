@@ -12,7 +12,7 @@ import httpx
 
 from app.api.deps import get_db, get_current_user
 from app.core.config import get_settings
-from app.models import PaymentParserRun, Staff
+from app.models import BillingCronRun, PaymentParserRun, Staff
 from app.services.gmail_service import GmailService
 from scripts.parse_payments import (
     compute_backfill_hours,
@@ -25,6 +25,10 @@ PARSER_INTERVAL_MINUTES = 5
 PARSER_GRACE_MINUTES = 2
 PARSER_MISS_HISTORY_LIMIT = 20
 PARSER_MISS_SCAN_LIMIT = 5000
+BILLING_INTERVAL_MINUTES = 60
+BILLING_GRACE_MINUTES = 10
+BILLING_HEALTH_WINDOW_HOURS = 24
+BILLING_HISTORY_LIMIT = 24
 
 
 def _validate_internal_cron_token(
@@ -60,6 +64,7 @@ def get_system_status(
         "openphone": check_openphone(),
         "gmail": check_gmail(),
         "payment_parser": check_payment_parser_health(db),
+        "billing_cron": check_billing_cron_health(db),
     }
     return status_payload
 
@@ -134,6 +139,7 @@ def run_midnight_billing(
     authorization: str | None = Header(default=None),
     x_cron_token: str | None = Header(default=None),
     x_cron_source: str | None = Header(default=None),
+    db: Session = Depends(get_db),
 ):
     """
     Trigger midnight billing job from Railway cron function.
@@ -142,12 +148,39 @@ def run_midnight_billing(
     _validate_internal_cron_token(authorization, x_cron_token)
     trigger_source = (x_cron_source or "railway-cron").strip()[:50] or "railway-cron"
     started_at = datetime.utcnow()
+    billing_run = BillingCronRun(
+        triggered_at=started_at,
+        success=False,
+        trigger_source=trigger_source,
+    )
+    db.add(billing_run)
+    db.commit()
+    db.refresh(billing_run)
 
     try:
         from scripts.midnight_billing import run_billing
 
-        run_billing()
+        summary = run_billing()
+        finished_at = datetime.utcnow()
+
+        billing_run.finished_at = finished_at
+        billing_run.success = True
+        billing_run.result_status = str(summary.get("status") or "completed")[:50]
+        billing_run.within_charge_window = bool(summary.get("within_charge_window"))
+        billing_run.active_drivers = int(summary.get("active_drivers") or 0)
+        billing_run.daily_debits = int(summary.get("daily_debits") or 0)
+        billing_run.weekly_debits = int(summary.get("weekly_debits") or 0)
+        billing_run.late_drivers = int(summary.get("late_drivers") or 0)
+        billing_run.sms_sent = int(summary.get("sms_sent") or 0)
+        billing_run.sms_failed = int(summary.get("sms_failed") or 0)
+        billing_run.error_message = None
+        db.commit()
     except Exception as exc:
+        billing_run.finished_at = datetime.utcnow()
+        billing_run.success = False
+        billing_run.result_status = "failed"
+        billing_run.error_message = str(exc)[:500]
+        db.commit()
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Billing run failed: {str(exc)[:240]}",
@@ -155,9 +188,20 @@ def run_midnight_billing(
 
     return {
         "ok": True,
+        "run_id": str(billing_run.id),
         "trigger_source": trigger_source,
         "started_at": started_at.isoformat(),
-        "executed_at": datetime.utcnow().isoformat(),
+        "executed_at": billing_run.finished_at.isoformat() if billing_run.finished_at else datetime.utcnow().isoformat(),
+        "summary": {
+            "status": billing_run.result_status,
+            "within_charge_window": billing_run.within_charge_window,
+            "active_drivers": billing_run.active_drivers,
+            "daily_debits": billing_run.daily_debits,
+            "weekly_debits": billing_run.weekly_debits,
+            "late_drivers": billing_run.late_drivers,
+            "sms_sent": billing_run.sms_sent,
+            "sms_failed": billing_run.sms_failed,
+        },
     }
 
 
@@ -377,4 +421,129 @@ def check_payment_parser_health(db: Session) -> dict:
         "currently_late": ongoing_event is not None,
         "current_delay_minutes": ongoing_event["delay_minutes"] if ongoing_event else 0,
         "miss_history": list(reversed(events[-PARSER_MISS_HISTORY_LIMIT:])),
+    }
+
+
+def check_billing_cron_health(db: Session) -> dict:
+    now = datetime.utcnow()
+    window_start = now - timedelta(hours=BILLING_HEALTH_WINDOW_HOURS)
+
+    try:
+        runs = (
+            db.query(BillingCronRun)
+            .order_by(BillingCronRun.triggered_at.asc())
+            .all()
+        )
+    except SQLAlchemyError:
+        return {
+            "status": "warning",
+            "message": "Billing tracking table is not initialized",
+            "tracking_started_at": now.isoformat(),
+            "expected_interval_minutes": BILLING_INTERVAL_MINUTES,
+            "grace_minutes": BILLING_GRACE_MINUTES,
+            "window_hours": BILLING_HEALTH_WINDOW_HOURS,
+            "health_score_24h": 0.0,
+            "last_run_at": None,
+            "last_success_at": None,
+            "last_charge_window_run_at": None,
+            "last_error": None,
+            "total_runs": 0,
+            "failed_runs_24h": 0,
+            "missed_windows_24h": 0,
+            "currently_late": False,
+            "current_delay_minutes": 0,
+            "recent_runs": [],
+        }
+
+    run_times = [run.triggered_at for run in runs if run.triggered_at]
+    events, _ = _compute_parser_miss_events(
+        run_times=run_times,
+        now=now,
+        interval_minutes=BILLING_INTERVAL_MINUTES,
+        grace_minutes=BILLING_GRACE_MINUTES,
+    )
+
+    failed_runs_24h = sum(
+        1 for run in runs
+        if run.triggered_at and run.triggered_at >= window_start and not run.success
+    )
+    missed_windows_24h = sum(
+        int(event.get("missed_intervals", 0))
+        for event in events
+        if datetime.fromisoformat(event["missed_at"]) >= window_start
+    )
+
+    expected_runs = max(1, int((BILLING_HEALTH_WINDOW_HOURS * 60) / BILLING_INTERVAL_MINUTES))
+    issue_count = min(expected_runs, failed_runs_24h + missed_windows_24h)
+    health_score_24h = round(max(0.0, ((expected_runs - issue_count) / expected_runs) * 100), 1)
+
+    last_run = runs[-1] if runs else None
+    last_success = next((run for run in reversed(runs) if run.success), None)
+    last_charge_window_run = next(
+        (
+            run for run in reversed(runs)
+            if run.success and run.within_charge_window
+        ),
+        None,
+    )
+    ongoing_event = events[-1] if events and events[-1].get("recovered_at") is None else None
+
+    if not runs:
+        status_value = "warning"
+        message = "Tracking started. Waiting for first billing run."
+    elif last_run and not last_run.success:
+        status_value = "error"
+        message = "Last billing run failed"
+    elif ongoing_event:
+        status_value = "error"
+        message = f"Billing cron delayed by {ongoing_event['delay_minutes']} min"
+    elif health_score_24h >= 95:
+        status_value = "ok"
+        message = "Operational"
+    elif health_score_24h >= 80:
+        status_value = "warning"
+        message = f"Degraded ({failed_runs_24h} failed / {missed_windows_24h} missed in 24h)"
+    else:
+        status_value = "error"
+        message = f"Unstable ({failed_runs_24h} failed / {missed_windows_24h} missed in 24h)"
+
+    recent_runs = []
+    for run in reversed(runs[-BILLING_HISTORY_LIMIT:]):
+        recent_runs.append(
+            {
+                "triggered_at": run.triggered_at.isoformat() if run.triggered_at else None,
+                "finished_at": run.finished_at.isoformat() if run.finished_at else None,
+                "success": run.success,
+                "result_status": run.result_status,
+                "within_charge_window": run.within_charge_window,
+                "active_drivers": run.active_drivers,
+                "daily_debits": run.daily_debits,
+                "weekly_debits": run.weekly_debits,
+                "late_drivers": run.late_drivers,
+                "sms_sent": run.sms_sent,
+                "sms_failed": run.sms_failed,
+                "error_message": run.error_message,
+            }
+        )
+
+    return {
+        "status": status_value,
+        "message": message,
+        "tracking_started_at": run_times[0].isoformat() if run_times else now.isoformat(),
+        "expected_interval_minutes": BILLING_INTERVAL_MINUTES,
+        "grace_minutes": BILLING_GRACE_MINUTES,
+        "window_hours": BILLING_HEALTH_WINDOW_HOURS,
+        "health_score_24h": health_score_24h,
+        "last_run_at": last_run.triggered_at.isoformat() if last_run else None,
+        "last_success_at": last_success.triggered_at.isoformat() if last_success else None,
+        "last_charge_window_run_at": (
+            last_charge_window_run.triggered_at.isoformat() if last_charge_window_run else None
+        ),
+        "last_error": last_run.error_message if last_run and not last_run.success else None,
+        "total_runs": len(runs),
+        "failed_runs_24h": failed_runs_24h,
+        "missed_windows_24h": missed_windows_24h,
+        "currently_late": ongoing_event is not None,
+        "current_delay_minutes": ongoing_event["delay_minutes"] if ongoing_event else 0,
+        "recent_runs": recent_runs,
     }

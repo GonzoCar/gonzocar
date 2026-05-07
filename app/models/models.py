@@ -199,6 +199,25 @@ class PaymentParserRun(Base):
     error_message = Column(Text, nullable=True)
 
 
+class BillingCronRun(Base):
+    __tablename__ = "billing_cron_runs"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    triggered_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    finished_at = Column(DateTime, nullable=True)
+    success = Column(Boolean, default=False, nullable=False)
+    trigger_source = Column(String(50), nullable=False, default="railway-cron")
+    result_status = Column(String(50), nullable=True)
+    within_charge_window = Column(Boolean, nullable=True)
+    active_drivers = Column(Integer, nullable=True)
+    daily_debits = Column(Integer, nullable=True)
+    weekly_debits = Column(Integer, nullable=True)
+    late_drivers = Column(Integer, nullable=True)
+    sms_sent = Column(Integer, nullable=True)
+    sms_failed = Column(Integer, nullable=True)
+    error_message = Column(Text, nullable=True)
+
+
 class Ledger(Base):
     __tablename__ = "ledger"
 
