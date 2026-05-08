@@ -66,6 +66,7 @@ export default function Settings() {
     const [status, setStatus] = useState<SystemStatus | null>(null);
     const [initialLoading, setInitialLoading] = useState(true);
     const [refreshing, setRefreshing] = useState(false);
+    const [billingHistoryPage, setBillingHistoryPage] = useState(1);
 
     useEffect(() => {
         loadStatus(false);
@@ -135,8 +136,43 @@ export default function Settings() {
         return date.toLocaleString();
     }
 
+    function getNextChargeWindowLabel(): string {
+        const now = new Date();
+        const chicagoHour = Number(new Intl.DateTimeFormat('en-US', {
+            timeZone: 'America/Chicago',
+            hour: '2-digit',
+            hour12: false,
+        }).format(now));
+        const isToday = chicagoHour < 17;
+        const targetDate = isToday ? now : new Date(now.getTime() + 24 * 60 * 60 * 1000);
+        const dayLabel = new Intl.DateTimeFormat('en-US', {
+            timeZone: 'America/Chicago',
+            weekday: 'short',
+            month: 'short',
+            day: 'numeric',
+        }).format(targetDate);
+        return `${isToday ? 'Today' : 'Tomorrow'} · ${dayLabel} @ 5:00 PM CT`;
+    }
+
     const parserHealth = status?.payment_parser;
     const billingHealth = status?.billing_cron;
+    const billingHistoryRows = billingHealth?.recent_runs ?? [];
+    const BILLING_HISTORY_PAGE_SIZE = 5;
+    const billingHistoryTotalPages = Math.max(1, Math.ceil(billingHistoryRows.length / BILLING_HISTORY_PAGE_SIZE));
+    const pagedBillingHistory = billingHistoryRows.slice(
+        (billingHistoryPage - 1) * BILLING_HISTORY_PAGE_SIZE,
+        billingHistoryPage * BILLING_HISTORY_PAGE_SIZE,
+    );
+
+    useEffect(() => {
+        setBillingHistoryPage(1);
+    }, [billingHistoryRows.length]);
+
+    useEffect(() => {
+        if (billingHistoryPage > billingHistoryTotalPages) {
+            setBillingHistoryPage(billingHistoryTotalPages);
+        }
+    }, [billingHistoryPage, billingHistoryTotalPages]);
 
     return (
         <div style={{ padding: 'var(--space-4)' }}>
@@ -437,10 +473,10 @@ export default function Settings() {
                             </div>
                             <div style={{ border: '1px solid var(--light-gray)', borderRadius: 'var(--radius-small)', padding: 'var(--space-2)' }}>
                                 <div style={{ fontSize: '0.75rem', textTransform: 'uppercase', color: 'var(--dark-gray)', opacity: 0.65, marginBottom: '4px' }}>
-                                    24h Health
+                                    Next Charge Window
                                 </div>
-                                <div style={{ color: 'var(--dark-gray)', fontWeight: 600, fontSize: '1rem' }}>
-                                    {initialLoading ? '...' : `${billingHealth?.health_score_24h ?? 0}%`}
+                                <div style={{ color: 'var(--dark-gray)', fontWeight: 600, fontSize: '0.875rem' }}>
+                                    {initialLoading ? 'Loading...' : getNextChargeWindowLabel()}
                                 </div>
                             </div>
                             <div style={{ border: '1px solid var(--light-gray)', borderRadius: 'var(--radius-small)', padding: 'var(--space-2)' }}>
@@ -472,44 +508,89 @@ export default function Settings() {
                     <div style={{ padding: 'var(--space-3)' }}>
                         {initialLoading ? (
                             <div style={{ color: 'var(--dark-gray)', opacity: 0.7 }}>Loading billing history...</div>
-                        ) : !billingHealth || billingHealth.recent_runs.length === 0 ? (
+                        ) : !billingHealth || billingHistoryRows.length === 0 ? (
                             <div style={{ color: 'var(--dark-gray)', opacity: 0.7 }}>
                                 No billing runs recorded yet.
                             </div>
                         ) : (
-                            <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-                                <thead>
-                                    <tr style={{ background: 'var(--light-gray)' }}>
-                                        <th style={{ padding: 'var(--space-2)', textAlign: 'left', color: 'var(--dark-gray)', fontSize: '0.75rem', fontWeight: 600 }}>Triggered At</th>
-                                        <th style={{ padding: 'var(--space-2)', textAlign: 'left', color: 'var(--dark-gray)', fontSize: '0.75rem', fontWeight: 600 }}>Result</th>
-                                        <th style={{ padding: 'var(--space-2)', textAlign: 'left', color: 'var(--dark-gray)', fontSize: '0.75rem', fontWeight: 600 }}>Debits</th>
-                                        <th style={{ padding: 'var(--space-2)', textAlign: 'left', color: 'var(--dark-gray)', fontSize: '0.75rem', fontWeight: 600 }}>SMS</th>
-                                        <th style={{ padding: 'var(--space-2)', textAlign: 'left', color: 'var(--dark-gray)', fontSize: '0.75rem', fontWeight: 600 }}>Error</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    {billingHealth.recent_runs.map((item, index) => (
-                                        <tr key={`${item.triggered_at || 'run'}-${index}`} style={{ borderTop: '1px solid var(--light-gray)' }}>
-                                            <td style={{ padding: 'var(--space-2)', color: 'var(--dark-gray)', fontSize: '0.875rem' }}>
-                                                {formatDateTime(item.triggered_at)}
-                                            </td>
-                                            <td style={{ padding: 'var(--space-2)', color: 'var(--dark-gray)', fontSize: '0.875rem' }}>
-                                                {item.result_status || (item.success ? 'completed' : 'failed')}
-                                                {item.within_charge_window ? ' (charge window)' : ' (outside window)'}
-                                            </td>
-                                            <td style={{ padding: 'var(--space-2)', color: 'var(--dark-gray)', fontSize: '0.875rem' }}>
-                                                D:{item.daily_debits ?? 0} / W:{item.weekly_debits ?? 0}
-                                            </td>
-                                            <td style={{ padding: 'var(--space-2)', color: 'var(--dark-gray)', fontSize: '0.875rem' }}>
-                                                Sent {item.sms_sent ?? 0}, Failed {item.sms_failed ?? 0}
-                                            </td>
-                                            <td style={{ padding: 'var(--space-2)', color: 'var(--dark-gray)', fontSize: '0.875rem' }}>
-                                                {item.error_message || '—'}
-                                            </td>
+                            <>
+                                <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                                    <thead>
+                                        <tr style={{ background: 'var(--light-gray)' }}>
+                                            <th style={{ padding: 'var(--space-2)', textAlign: 'left', color: 'var(--dark-gray)', fontSize: '0.75rem', fontWeight: 600 }}>Triggered At</th>
+                                            <th style={{ padding: 'var(--space-2)', textAlign: 'left', color: 'var(--dark-gray)', fontSize: '0.75rem', fontWeight: 600 }}>Result</th>
+                                            <th style={{ padding: 'var(--space-2)', textAlign: 'left', color: 'var(--dark-gray)', fontSize: '0.75rem', fontWeight: 600 }}>Debits</th>
+                                            <th style={{ padding: 'var(--space-2)', textAlign: 'left', color: 'var(--dark-gray)', fontSize: '0.75rem', fontWeight: 600 }}>SMS</th>
+                                            <th style={{ padding: 'var(--space-2)', textAlign: 'left', color: 'var(--dark-gray)', fontSize: '0.75rem', fontWeight: 600 }}>Error</th>
                                         </tr>
-                                    ))}
-                                </tbody>
-                            </table>
+                                    </thead>
+                                    <tbody>
+                                        {pagedBillingHistory.map((item, index) => (
+                                            <tr key={`${item.triggered_at || 'run'}-${index}`} style={{ borderTop: '1px solid var(--light-gray)' }}>
+                                                <td style={{ padding: 'var(--space-2)', color: 'var(--dark-gray)', fontSize: '0.875rem' }}>
+                                                    {formatDateTime(item.triggered_at)}
+                                                </td>
+                                                <td style={{ padding: 'var(--space-2)', color: 'var(--dark-gray)', fontSize: '0.875rem' }}>
+                                                    {item.result_status || (item.success ? 'completed' : 'failed')}
+                                                    {item.within_charge_window ? ' (charge window)' : ' (outside window)'}
+                                                </td>
+                                                <td style={{ padding: 'var(--space-2)', color: 'var(--dark-gray)', fontSize: '0.875rem' }}>
+                                                    D:{item.daily_debits ?? 0} / W:{item.weekly_debits ?? 0}
+                                                </td>
+                                                <td style={{ padding: 'var(--space-2)', color: 'var(--dark-gray)', fontSize: '0.875rem' }}>
+                                                    Sent {item.sms_sent ?? 0}, Failed {item.sms_failed ?? 0}
+                                                </td>
+                                                <td style={{ padding: 'var(--space-2)', color: 'var(--dark-gray)', fontSize: '0.875rem' }}>
+                                                    {item.error_message || '—'}
+                                                </td>
+                                            </tr>
+                                        ))}
+                                    </tbody>
+                                </table>
+                                <div
+                                    style={{
+                                        marginTop: 'var(--space-2)',
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        justifyContent: 'flex-end',
+                                        gap: 'var(--space-2)',
+                                    }}
+                                >
+                                    <button
+                                        onClick={() => setBillingHistoryPage((prev) => Math.max(1, prev - 1))}
+                                        disabled={billingHistoryPage <= 1}
+                                        style={{
+                                            padding: '6px 10px',
+                                            borderRadius: 'var(--radius-small)',
+                                            border: '1px solid var(--medium-gray)',
+                                            background: 'var(--white)',
+                                            color: 'var(--dark-gray)',
+                                            cursor: billingHistoryPage <= 1 ? 'not-allowed' : 'pointer',
+                                            opacity: billingHistoryPage <= 1 ? 0.6 : 1,
+                                        }}
+                                    >
+                                        Prev
+                                    </button>
+                                    <span style={{ color: 'var(--dark-gray)', fontSize: '0.8125rem' }}>
+                                        Page {billingHistoryPage} / {billingHistoryTotalPages}
+                                    </span>
+                                    <button
+                                        onClick={() => setBillingHistoryPage((prev) => Math.min(billingHistoryTotalPages, prev + 1))}
+                                        disabled={billingHistoryPage >= billingHistoryTotalPages}
+                                        style={{
+                                            padding: '6px 10px',
+                                            borderRadius: 'var(--radius-small)',
+                                            border: '1px solid var(--medium-gray)',
+                                            background: 'var(--white)',
+                                            color: 'var(--dark-gray)',
+                                            cursor: billingHistoryPage >= billingHistoryTotalPages ? 'not-allowed' : 'pointer',
+                                            opacity: billingHistoryPage >= billingHistoryTotalPages ? 0.6 : 1,
+                                        }}
+                                    >
+                                        Next
+                                    </button>
+                                </div>
+                            </>
                         )}
                     </div>
                 </div>
