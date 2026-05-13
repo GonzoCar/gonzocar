@@ -158,28 +158,53 @@ def check_late_payments(db: Session, drivers: list[Driver]) -> list[tuple]:
     
     for driver in drivers:
         balance = calculate_balance(db, driver.id)
-        
+
         if balance >= 0:
             continue
-        
-        # Find when balance became negative (simplified: use last debit date)
+
+        # Daily logic must not rely on "last debit date", because daily drivers
+        # are charged every day and would otherwise never reach 2+ days late.
+        if driver.billing_type == BillingType.daily:
+            days_late = _calculate_daily_days_late(balance, driver.billing_rate)
+            if days_late >= 2:
+                late_drivers.append((driver, balance, days_late))
+            continue
+
+        # Weekly and fallback logic: use last debit age (48+ hours late).
         last_debit = db.query(Ledger).filter(
             Ledger.driver_id == driver.id,
             Ledger.type == LedgerType.debit
         ).order_by(Ledger.created_at.desc()).first()
-        
+
         if not last_debit:
             continue
-        
+
         days_late = (now - last_debit.created_at).days
-        
-        # Check if late based on billing type
-        if driver.billing_type == BillingType.daily and days_late >= 2:
-            late_drivers.append((driver, balance, days_late))
-        elif driver.billing_type == BillingType.weekly and days_late >= 2:  # 48 hours = 2 days
+        if days_late >= 2:
             late_drivers.append((driver, balance, days_late))
     
     return late_drivers
+
+
+def _calculate_daily_days_late(balance: Decimal, billing_rate: Decimal) -> int:
+    """
+    Estimate overdue days for daily billing from unpaid balance.
+
+    Example:
+    - balance -357, rate 67 => 5 days late
+    - balance -133, rate 67 => 1 day late
+    """
+    if balance >= 0:
+        return 0
+    if billing_rate is None:
+        return 0
+
+    rate = Decimal(billing_rate)
+    if rate <= 0:
+        return 0
+
+    unpaid = abs(Decimal(balance))
+    return int(unpaid // rate)
 
 
 def send_late_payment_sms(db: Session, driver: Driver, balance: Decimal, days_late: int) -> str:
