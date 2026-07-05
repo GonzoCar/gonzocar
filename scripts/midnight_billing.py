@@ -301,8 +301,26 @@ def has_hit_reminder_cap(db: Session, driver: Driver) -> bool:
     return reminder_days >= MAX_CONSECUTIVE_REMINDERS
 
 
+def should_send_late_payment_sms(db: Session, driver: Driver, balance: Decimal, days_late: int) -> bool:
+    """Return False when no reminder SMS should be sent for this driver."""
+    if BILLING_SMS_DISABLED:
+        return False
+
+    if balance >= 0:
+        return False
+
+    if db is not None and has_hit_reminder_cap(db, driver):
+        return False
+
+    return True
+
+
 def send_late_payment_sms(db: Session, driver: Driver, balance: Decimal, days_late: int) -> str:
     """Send late payment SMS and log it."""
+    if not should_send_late_payment_sms(db, driver, balance, days_late):
+        print(f"  Skipping SMS reminder for {driver.first_name} {driver.last_name} due to payment status or safety controls")
+        return "skipped"
+
     # Check if we already sent SMS today
     today = datetime.utcnow().date()
     existing_sms = db.query(SmsLog).filter(
@@ -395,6 +413,11 @@ def run_billing() -> dict:
         summary["weekly_debits"] = weekly_count
         print(f"Created {daily_count} daily debits, {weekly_count} weekly debits")
         
+        # Re-match any unmatched payments before deciding who is late.
+        rematched = rematch_unmatched_payments(db)
+        if rematched:
+            print(f"Re-matched {rematched} unmatched payments")
+
         # Check for late payments
         print("\n--- Checking Late Payments ---")
         late_drivers = check_late_payments(db, drivers)
