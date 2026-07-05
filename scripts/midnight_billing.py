@@ -31,7 +31,10 @@ load_dotenv('.env.local')
 from sqlalchemy.orm import Session
 from sqlalchemy import func, or_
 from app.core.database import SessionLocal
-from app.models import Driver, Ledger, SmsLog, LedgerType, BillingType, BillingStatus
+from app.models import (
+    Driver, Ledger, SmsLog, Alias, PaymentRaw,
+    LedgerType, BillingType, BillingStatus,
+)
 from app.services.openphone import openphone, SmsTemplates
 from app.services.billing import (
     CHICAGO_TZ,
@@ -39,6 +42,13 @@ from app.services.billing import (
     is_charge_window,
     normalize_weekly_due_day,
 )
+
+# Safety controls
+# BILLING_SMS_DISABLED=true  -> debits/balances still run, but no SMS is sent.
+# MAX_CONSECUTIVE_REMINDERS  -> stop repeat-texting a driver after this many
+#                               reminder days with no payment credited in between.
+BILLING_SMS_DISABLED = os.getenv("BILLING_SMS_DISABLED", "false").strip().lower() in {"1", "true", "yes"}
+MAX_CONSECUTIVE_REMINDERS = int(os.getenv("MAX_CONSECUTIVE_REMINDERS", "3"))
 
 
 def get_db() -> Session:
@@ -205,6 +215,90 @@ def _calculate_daily_days_late(balance: Decimal, billing_rate: Decimal) -> int:
 
     unpaid = abs(Decimal(balance))
     return int(unpaid // rate)
+
+
+def _find_driver_by_alias(db: Session, sender_name: str, sender_identifier: str) -> Driver:
+    """Match a payment sender to a driver via the aliases table (same logic as the payment parser)."""
+    candidates = []
+    if sender_name and sender_name.strip():
+        candidates.append(sender_name.strip())
+    if sender_identifier and sender_identifier.strip():
+        candidates.append(sender_identifier.strip())
+
+    for candidate in candidates:
+        alias = db.query(Alias).filter(
+            func.lower(Alias.alias_value) == candidate.lower()
+        ).first()
+        if alias:
+            return db.query(Driver).filter(Driver.id == alias.driver_id).first()
+
+    return None
+
+
+def rematch_unmatched_payments(db: Session) -> int:
+    """
+    Re-check unmatched payments against the alias table before lateness is
+    evaluated. Catches payments that arrived but missed matching (alias added
+    after the payment landed, parser timing, etc.) and credits them so drivers
+    who already paid are not flagged late or texted again.
+    """
+    count = 0
+    unmatched = db.query(PaymentRaw).filter(
+        or_(PaymentRaw.matched.is_(False), PaymentRaw.matched.is_(None))
+    ).order_by(PaymentRaw.created_at.asc()).all()
+
+    for payment in unmatched:
+        driver = _find_driver_by_alias(db, payment.sender_name, payment.sender_identifier)
+        if not driver:
+            continue
+
+        # Never double-credit: skip ledger insert if a credit already references this payment.
+        existing_credit = db.query(Ledger).filter(
+            Ledger.reference_id == payment.id,
+            Ledger.type == LedgerType.credit,
+        ).first()
+        if not existing_credit:
+            source_label = payment.source.value.upper() if payment.source else "PAYMENT"
+            credit = Ledger(
+                id=uuid4(),
+                driver_id=driver.id,
+                type=LedgerType.credit,
+                amount=payment.amount,
+                description=f"{source_label} payment from {payment.sender_name} (auto re-match)",
+                reference_id=payment.id,
+                created_at=datetime.utcnow(),
+            )
+            db.add(credit)
+
+        payment.matched = True
+        payment.driver_id = driver.id
+        count += 1
+        print(f"  Re-matched payment ${payment.amount} from {payment.sender_name} -> {driver.first_name} {driver.last_name}")
+
+    return count
+
+
+def has_hit_reminder_cap(db: Session, driver: Driver) -> bool:
+    """
+    True when the driver has already been reminded on MAX_CONSECUTIVE_REMINDERS
+    distinct days with no credit posted since. Repeat texts past that point are
+    noise; the payment likely never reached payments_raw and needs manual
+    review (scripts/reconcile_payments.py).
+    """
+    last_credit = db.query(Ledger).filter(
+        Ledger.driver_id == driver.id,
+        Ledger.type == LedgerType.credit,
+    ).order_by(Ledger.created_at.desc()).first()
+
+    query = db.query(func.count(func.distinct(func.date(SmsLog.created_at)))).filter(
+        SmsLog.driver_id == driver.id,
+        SmsLog.status == 'sent',
+    )
+    if last_credit:
+        query = query.filter(SmsLog.created_at > last_credit.created_at)
+
+    reminder_days = query.scalar() or 0
+    return reminder_days >= MAX_CONSECUTIVE_REMINDERS
 
 
 def send_late_payment_sms(db: Session, driver: Driver, balance: Decimal, days_late: int) -> str:
