@@ -3,7 +3,7 @@ System status endpoint for checking service health.
 """
 from datetime import datetime, timedelta
 
-from fastapi import APIRouter, Depends, Header, HTTPException, status
+from fastapi import APIRouter, Body, Depends, Header, HTTPException, status
 from sqlalchemy.orm import Session
 from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
@@ -12,7 +12,7 @@ import httpx
 
 from app.api.deps import get_db, get_current_user
 from app.core.config import get_settings
-from app.models import BillingCronRun, PaymentParserRun, Staff
+from app.models import BillingCronRun, PaymentParserRun, Staff, SystemSetting
 from app.services.gmail_service import GmailService
 from scripts.parse_payments import (
     compute_backfill_hours,
@@ -21,6 +21,22 @@ from scripts.parse_payments import (
 )
 
 router = APIRouter(prefix="/status", tags=["status"])
+
+
+def _get_setting(db: Session, key: str, default: str | None = None) -> str | None:
+    row = db.query(SystemSetting).filter(SystemSetting.key == key).first()
+    return row.value if row else default
+
+
+def _set_setting(db: Session, key: str, value: str) -> str:
+    row = db.query(SystemSetting).filter(SystemSetting.key == key).first()
+    if row is None:
+        row = SystemSetting(key=key, value=value)
+        db.add(row)
+    else:
+        row.value = value
+    db.commit()
+    return value
 PARSER_INTERVAL_MINUTES = 5
 PARSER_GRACE_MINUTES = 2
 PARSER_MISS_HISTORY_LIMIT = 20
@@ -67,8 +83,33 @@ def get_system_status(
         "gmail": check_gmail(),
         "payment_parser": check_payment_parser_health(db),
         "billing_cron": check_billing_cron_health(db),
+        "reminder_mode": {
+            "mode": _get_setting(db, "reminder_mode", "manual") or "manual",
+        },
     }
     return status_payload
+
+
+@router.get("/reminder-mode")
+def get_reminder_mode(
+    db: Session = Depends(get_db),
+    current_user: Staff = Depends(get_current_user),
+):
+    return {"mode": _get_setting(db, "reminder_mode", "manual") or "manual"}
+
+
+@router.post("/reminder-mode")
+def set_reminder_mode(
+    payload: dict | None = Body(default=None),
+    db: Session = Depends(get_db),
+    current_user: Staff = Depends(get_current_user),
+):
+    raw_mode = (payload or {}).get("mode", "manual")
+    mode = str(raw_mode).strip().lower()
+    if mode not in {"automatic", "manual"}:
+        raise HTTPException(status_code=400, detail="mode must be 'automatic' or 'manual'")
+    _set_setting(db, "reminder_mode", mode)
+    return {"mode": mode}
 
 
 @router.post("/run-payment-parser")

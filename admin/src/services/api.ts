@@ -464,6 +464,22 @@ class ApiService {
         return response.json();
     }
 
+    async getReminderMode() {
+        const response = await fetch(`${API_URL}/status/reminder-mode`, { headers: this.headers() });
+        if (!response.ok) throw new Error("Failed to fetch reminder mode");
+        return response.json();
+    }
+
+    async updateReminderMode(mode: "automatic" | "manual") {
+        const response = await fetch(`${API_URL}/status/reminder-mode`, {
+            method: "POST",
+            headers: this.headers(),
+            body: JSON.stringify({ mode }),
+        });
+        if (!response.ok) throw new Error("Failed to update reminder mode");
+        return response.json();
+    }
+
     // SMS
     async sendSms(phone: string, message: string) {
         const response = await fetch(`${API_URL}/sms/send`, {
@@ -472,6 +488,16 @@ class ApiService {
             body: JSON.stringify({ phone, message }),
         });
         if (!response.ok) throw new Error("Failed to send SMS");
+        return response.json();
+    }
+
+    async sendManualOverdueReminder(driverId: string, message: string) {
+        const response = await fetch(`${API_URL}/drivers/${driverId}/sms/reminder`, {
+            method: "POST",
+            headers: this.headers(),
+            body: JSON.stringify({ message }),
+        });
+        if (!response.ok) throw new Error("Failed to send reminder SMS");
         return response.json();
     }
 }

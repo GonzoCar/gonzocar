@@ -1,6 +1,7 @@
 import unittest
 from decimal import Decimal
 from types import SimpleNamespace
+from unittest.mock import patch
 
 from scripts import midnight_billing as billing
 from scripts.midnight_billing import _calculate_daily_days_late
@@ -30,6 +31,11 @@ class MidnightBillingLateLogicTests(unittest.TestCase):
             self.assertFalse(billing.should_send_late_payment_sms(None, driver, Decimal("-50"), 2))
         finally:
             billing.BILLING_SMS_DISABLED = original
+
+    def test_sms_reminder_is_skipped_when_reminder_mode_is_manual(self):
+        driver = SimpleNamespace(id="driver-3", first_name="Alice", last_name="Nguyen", phone="+15551234569")
+        with patch("scripts.midnight_billing.reminder_mode_is_automatic", return_value=False):
+            self.assertFalse(billing.should_send_late_payment_sms(None, driver, Decimal("-50"), 2))
 
 
 if __name__ == "__main__":

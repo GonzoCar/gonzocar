@@ -67,6 +67,9 @@ export default function Settings() {
     const [initialLoading, setInitialLoading] = useState(true);
     const [refreshing, setRefreshing] = useState(false);
     const [billingHistoryPage, setBillingHistoryPage] = useState(1);
+    const [reminderMode, setReminderMode] = useState<"automatic" | "manual">("manual");
+    const [savingReminderMode, setSavingReminderMode] = useState(false);
+    const [reminderModeMessage, setReminderModeMessage] = useState("");
 
     useEffect(() => {
         loadStatus(false);
@@ -81,6 +84,9 @@ export default function Settings() {
         try {
             const data = await api.getSystemStatus();
             setStatus(data);
+            if (data?.reminder_mode?.mode) {
+                setReminderMode(data.reminder_mode.mode);
+            }
         } catch (error) {
             console.error('Failed to load status:', error);
         } finally {
@@ -134,6 +140,19 @@ export default function Settings() {
         const date = new Date(value);
         if (Number.isNaN(date.getTime())) return '—';
         return date.toLocaleString();
+    }
+
+    async function handleReminderModeSave() {
+        setSavingReminderMode(true);
+        setReminderModeMessage("");
+        try {
+            await api.updateReminderMode(reminderMode);
+            setReminderModeMessage(`Reminder mode set to ${reminderMode}.`);
+        } catch (error) {
+            setReminderModeMessage("Unable to update reminder mode right now.");
+        } finally {
+            setSavingReminderMode(false);
+        }
     }
 
     function getNextChargeWindowLabel(): string {
@@ -237,6 +256,53 @@ export default function Settings() {
                             </span>
                         </div>
                     </div>
+                </div>
+
+                {/* Reminder Automation */}
+                <div style={{
+                    background: 'var(--white)',
+                    borderRadius: 'var(--radius-standard)',
+                    padding: 'var(--space-3)',
+                    boxShadow: '0 2px 8px rgba(0, 0, 0, 0.08)',
+                }}>
+                    <h3 style={{
+                        fontFamily: 'var(--font-heading)',
+                        fontSize: '1rem',
+                        color: 'var(--dark-gray)',
+                        marginBottom: 'var(--space-2)',
+                    }}>
+                        Reminder Automation
+                    </h3>
+                    <p style={{ color: 'var(--dark-gray)', opacity: 0.7, marginBottom: 'var(--space-3)' }}>
+                        Choose whether overdue reminders are sent automatically by the billing job or only when staff sends them manually.
+                    </p>
+                    <label style={{ display: 'flex', flexDirection: 'column', gap: '4px', marginBottom: 'var(--space-2)' }}>
+                        <span style={{ fontSize: '0.75rem', color: 'var(--dark-gray)', opacity: 0.7, textTransform: 'uppercase' }}>Mode</span>
+                        <select
+                            value={reminderMode}
+                            onChange={(e) => setReminderMode(e.target.value as "automatic" | "manual")}
+                            style={{ padding: '8px 10px', borderRadius: 'var(--radius-small)', border: '1px solid var(--medium-gray)' }}
+                        >
+                            <option value="manual">Manual only</option>
+                            <option value="automatic">Automatic</option>
+                        </select>
+                    </label>
+                    <button
+                        onClick={handleReminderModeSave}
+                        disabled={savingReminderMode}
+                        style={{
+                            padding: '8px 12px',
+                            background: 'var(--primary-blue)',
+                            color: 'var(--white)',
+                            border: 'none',
+                            borderRadius: 'var(--radius-small)',
+                            cursor: savingReminderMode ? 'not-allowed' : 'pointer',
+                            opacity: savingReminderMode ? 0.8 : 1,
+                        }}
+                    >
+                        {savingReminderMode ? 'Saving…' : 'Save Reminder Mode'}
+                    </button>
+                    {reminderModeMessage ? <div style={{ marginTop: '8px', fontSize: '0.8rem', color: 'var(--dark-gray)' }}>{reminderModeMessage}</div> : null}
                 </div>
 
                 {/* System Status */}

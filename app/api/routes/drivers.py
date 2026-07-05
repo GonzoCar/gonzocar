@@ -22,6 +22,7 @@ from app.models import (
     Vehicle,
 )
 from app.services.billing import default_weekly_due_day, normalize_weekly_due_day
+from app.services.openphone import openphone, SmsTemplates
 from app.schemas import (
     AliasCreate,
     AliasResponse,
@@ -750,6 +751,40 @@ def delete_alias(
         raise HTTPException(status_code=404, detail="Alias not found")
     db.delete(alias)
     db.commit()
+
+
+@router.post("/{driver_id}/sms/reminder")
+def send_manual_overdue_reminder(
+    driver_id: UUID,
+    payload: dict | None = Body(default=None),
+    db: Session = Depends(get_db),
+    current_user: Staff = Depends(get_current_user),
+):
+    driver = db.query(Driver).filter(Driver.id == driver_id).first()
+    if not driver:
+        raise HTTPException(status_code=404, detail="Driver not found")
+
+    message = (payload or {}).get("message") or SmsTemplates.late_payment(
+        driver_name=driver.first_name,
+        amount=0.0,
+        days_late=1,
+    )
+
+    result = openphone.send_sms_sync(driver.phone, message)
+    sms_log = SmsLog(
+        driver_id=driver.id,
+        phone=driver.phone,
+        message=message,
+        status="sent" if result.success else "failed",
+        openphone_response={"message_id": result.message_id, "error": result.error},
+    )
+    db.add(sms_log)
+    db.commit()
+
+    if not result.success:
+        raise HTTPException(status_code=500, detail=result.error or "Failed to send reminder SMS")
+
+    return {"success": True, "message_id": result.message_id, "driver_id": str(driver.id)}
 
 
 @router.get("/{driver_id}/ledger", response_model=list[LedgerResponse])

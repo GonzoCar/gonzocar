@@ -17,6 +17,10 @@ SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 Base = declarative_base()
 
 
+def init_db() -> None:
+    Base.metadata.create_all(bind=engine)
+
+
 def get_db():
     """Dependency for FastAPI routes."""
     db = SessionLocal()

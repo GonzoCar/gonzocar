@@ -330,6 +330,8 @@ export default function DriverDetail() {
     const [isEditingApplicationInfo, setIsEditingApplicationInfo] = useState(false);
     const [applicationInfoDraft, setApplicationInfoDraft] = useState<Record<string, string>>({});
     const [applicationInfoError, setApplicationInfoError] = useState("");
+    const [reminderMessage, setReminderMessage] = useState("");
+    const [reminderSent, setReminderSent] = useState(false);
 
     useEffect(() => {
         if (id) loadData({ showSpinner: true });
@@ -679,6 +681,22 @@ export default function DriverDetail() {
             } else {
                 console.error("Failed to swap vehicle:", error);
             }
+        } finally {
+            setBusy(false);
+        }
+    }
+
+    async function handleManualReminderSend() {
+        if (!id || !driver) return;
+        setBusy(true);
+        setReminderSent(false);
+        try {
+            const message = reminderMessage.trim() || `Hi ${driver.first_name}, this is a manual reminder from GonzoFleet. Please contact us if you have already made your payment.`;
+            await api.sendManualOverdueReminder(id, message);
+            setReminderSent(true);
+            setReminderMessage("");
+        } catch (error) {
+            console.error("Failed to send reminder SMS:", error);
         } finally {
             setBusy(false);
         }
@@ -1084,6 +1102,31 @@ export default function DriverDetail() {
                         );
                     })}
 
+                    <hr style={{ border: "none", borderTop: "1px solid var(--light-gray)" }} />
+                    <div style={{ fontSize: "0.75rem", opacity: 0.7 }}>Manual Reminder SMS</div>
+                    <textarea
+                        value={reminderMessage}
+                        onChange={(e) => setReminderMessage(e.target.value)}
+                        placeholder={`Hi ${driver.first_name}, this is a manual reminder from GonzoFleet. Please contact us if you already made your payment.`}
+                        style={{ ...inputStyle, minHeight: "80px", resize: "vertical" }}
+                    />
+                    <button
+                        disabled={busy}
+                        onClick={handleManualReminderSend}
+                        style={{
+                            padding: "8px 12px",
+                            background: "var(--primary-blue)",
+                            border: "none",
+                            borderRadius: "var(--radius-small)",
+                            color: "var(--white)",
+                            fontWeight: 600,
+                            cursor: busy ? "not-allowed" : "pointer",
+                            opacity: busy ? 0.75 : 1,
+                        }}
+                    >
+                        Send Manual Reminder
+                    </button>
+                    {reminderSent && <div style={{ color: "var(--success-green)", fontSize: "0.8rem" }}>Reminder was sent.</div>}
                     <hr style={{ border: "none", borderTop: "1px solid var(--light-gray)" }} />
                     <div style={{ fontSize: "0.75rem", opacity: 0.7 }}>Driver Portal</div>
                     <div style={{ fontSize: "0.8rem", wordBreak: "break-all" }}>{portalUrl || "No link"}</div>
