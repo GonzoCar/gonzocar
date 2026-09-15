@@ -24,7 +24,13 @@ router = APIRouter(prefix="/status", tags=["status"])
 
 
 def _get_setting(db: Session, key: str, default: str | None = None) -> str | None:
-    row = db.query(SystemSetting).filter(SystemSetting.key == key).first()
+    try:
+        row = db.query(SystemSetting).filter(SystemSetting.key == key).first()
+    except SQLAlchemyError:
+        # The system_settings table may not exist yet (e.g. mid-migration).
+        # Fall back to the default instead of raising a 500.
+        db.rollback()
+        return default
     return row.value if row else default
 
 
