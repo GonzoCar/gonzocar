@@ -13,7 +13,7 @@ import httpx
 from app.api.deps import get_db, get_current_user
 from app.core.config import get_settings
 from app.models import BillingCronRun, PaymentParserRun, Staff, SystemSetting
-from app.services.gmail_service import GmailService
+from app.services.gmail_service import GmailAuthError, GmailService
 from scripts.parse_payments import (
     compute_backfill_hours,
     get_last_payment_created_at,
@@ -122,6 +122,11 @@ def run_payment_parser(
     """
     Trigger payment parser from Railway cron function.
     Protected by INTERNAL_CRON_TOKEN.
+
+    Requires Gmail OAuth credentials configured via the GMAIL_CREDENTIALS
+    and GMAIL_TOKEN environment variables (raw JSON or base64-encoded JSON).
+    If they are missing or invalid, this returns HTTP 503 rather than 500,
+    since the failure is a configuration issue, not a server crash.
     """
     _validate_internal_cron_token(authorization, x_cron_token)
 
@@ -160,6 +165,18 @@ def run_payment_parser(
         db.commit()
     except HTTPException:
         raise
+    except GmailAuthError as exc:
+        parser_run.finished_at = datetime.utcnow()
+        parser_run.success = False
+        parser_run.error_message = str(exc)[:500]
+        db.commit()
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=(
+                "Gmail OAuth credentials not configured. Visit Google Cloud Console to "
+                "set up OAuth 2.0, then update GMAIL_CREDENTIALS and GMAIL_TOKEN environment variables."
+            ),
+        )
     except Exception as exc:
         parser_run.finished_at = datetime.utcnow()
         parser_run.success = False

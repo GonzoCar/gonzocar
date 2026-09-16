@@ -43,6 +43,16 @@ PAYMENT_INBOXES = [
 ]
 
 
+class GmailAuthError(Exception):
+    """Raised when Gmail OAuth credentials are missing or invalid.
+
+    This is distinct from generic errors so callers (e.g. API endpoints)
+    can distinguish a configuration issue from an unexpected failure and
+    respond accordingly (e.g. HTTP 503 instead of HTTP 500).
+    """
+    pass
+
+
 def _parse_env_json(raw_value: str | None, env_name: str):
     """Parse env value as base64 JSON (preferred) or raw JSON."""
     if not raw_value:
@@ -86,7 +96,14 @@ def get_credentials_from_env():
 
 
 class GmailService:
-    """Gmail API wrapper for fetching payment emails."""
+    """Gmail API wrapper for fetching payment emails.
+
+    In production (Railway), credentials must be supplied via the
+    GMAIL_CREDENTIALS and GMAIL_TOKEN environment variables, either as
+    raw JSON or base64-encoded JSON. Local credentials.json/token.json
+    files are only used as a development fallback and are never read
+    in production.
+    """
     
     def __init__(self, credentials_path: str = 'credentials.json', token_path: str = 'token.json'):
         self.credentials_path = credentials_path
@@ -129,9 +146,9 @@ class GmailService:
                     )
                 
                 if not os.path.exists(self.credentials_path):
-                    raise FileNotFoundError(
-                        f"credentials.json not found at {self.credentials_path}. "
-                        "Download from Google Cloud Console."
+                    raise GmailAuthError(
+                        "Gmail OAuth credentials not configured. "
+                        "Set GMAIL_CREDENTIALS and GMAIL_TOKEN environment variables."
                     )
                 flow = InstalledAppFlow.from_client_secrets_file(
                     self.credentials_path, SCOPES
