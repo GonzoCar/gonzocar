@@ -16,19 +16,17 @@ from google_auth_oauthlib.flow import Flow
 
 SCOPES = ["https://www.googleapis.com/auth/gmail.readonly"]
 
-KNOWN_DOMAINS = [
-    "backend-production-7bb3e.up.railway.app",
-    "web-production-96e71.up.railway.app",
-]
+# This is the redirect URI registered in the Google OAuth client.
+DEFAULT_REDIRECT_URI = "https://backend-production-7bb3e.up.railway.app/oauth/callback"
 
 router = APIRouter(tags=["gmail-oauth"])
 
 
 def _get_redirect_uri() -> str:
-    frontend_url = (os.getenv("FRONTEND_URL") or "").strip().rstrip("/")
-    if frontend_url:
-        return f"{frontend_url}/oauth/callback"
-    return f"https://{KNOWN_DOMAINS[0]}/oauth/callback"
+    # Keep authorization and token exchange on the exact same redirect URI.
+    # Do not derive this from FRONTEND_URL because that can silently create
+    # a redirect_uri_mismatch during Google's token exchange.
+    return (os.getenv("GMAIL_REDIRECT_URI") or DEFAULT_REDIRECT_URI).strip().rstrip("/")
 
 
 def _get_client_config() -> dict:
@@ -36,11 +34,11 @@ def _get_client_config() -> dict:
     client_secret = (os.getenv("GMAIL_CLIENT_SECRET") or "").strip()
     if not client_id or not client_secret:
         return {}
-    redirect_uris = [f"https://{domain}/oauth/callback" for domain in KNOWN_DOMAINS]
+    redirect_uri = _get_redirect_uri()
     return {"web": {"client_id": client_id, "client_secret": client_secret,
                      "auth_uri": "https://accounts.google.com/o/oauth2/auth",
                      "token_uri": "https://oauth2.googleapis.com/token",
-                     "redirect_uris": redirect_uris}}
+                     "redirect_uris": [redirect_uri]}}
 
 
 def _build_flow(redirect_uri: str) -> Flow:
@@ -61,7 +59,7 @@ def start_gmail_auth():
         authorization_url, state = flow.authorization_url(
             access_type="offline",
             include_granted_scopes="true",
-            prompt="consent",
+            prompt="select_account",
         )
     except HTTPException:
         raise
@@ -88,28 +86,12 @@ def gmail_oauth_callback(code: str | None = Query(default=None),
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST,
                             detail="Missing 'code' query parameter")
 
-    client_config = _get_client_config()
-    if not client_config:
-        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-                            detail="Gmail OAuth is not configured. Set GMAIL_CLIENT_ID and GMAIL_CLIENT_SECRET environment variables.")
-
-    last_error = None
-    credentials = None
-    candidate_redirect_uris = [f"https://{domain}/oauth/callback" for domain in KNOWN_DOMAINS]
-    frontend_url = (os.getenv("FRONTEND_URL") or "").strip().rstrip("/")
-    if frontend_url:
-        candidate_redirect_uris.insert(0, f"{frontend_url}/oauth/callback")
-
-    for redirect_uri in candidate_redirect_uris:
-        try:
-            credentials = _exchange_code_for_credentials(code, redirect_uri)
-            break
-        except Exception as exc:
-            last_error = exc
-
-    if credentials is None:
+    redirect_uri = _get_redirect_uri()
+    try:
+        credentials = _exchange_code_for_credentials(code, redirect_uri)
+    except Exception as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST,
-                            detail="Failed to exchange authorization code for a token. " + (f"({str(last_error)[:200]})" if last_error else ""))
+                            detail="Failed to exchange authorization code for a token. " + f"({str(exc)[:240]})")
 
     try:
         token_json = credentials.to_json()
@@ -118,7 +100,7 @@ def gmail_oauth_callback(code: str | None = Query(default=None),
             "client_secret": credentials.client_secret,
             "auth_uri": "https://accounts.google.com/o/oauth2/auth",
             "token_uri": credentials.token_uri or "https://oauth2.googleapis.com/token",
-            "redirect_uris": [f"https://{domain}/oauth/callback" for domain in KNOWN_DOMAINS],
+            "redirect_uris": [redirect_uri],
         }}
         gmail_credentials_b64 = base64.b64encode(json.dumps(gmail_credentials_payload).encode()).decode()
         gmail_token_b64 = base64.b64encode(token_json.encode()).decode()
