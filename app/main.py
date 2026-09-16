@@ -28,6 +28,14 @@ app.include_router(status.router, prefix="/api")
 app.include_router(sms.router, prefix="/api")
 app.include_router(webhooks.router)  # No prefix, webhook at root
 
+# Google OAuth callback at the root path, matching the registered redirect URI.
+app.add_api_route(
+    "/oauth/callback",
+    gmail_oauth.gmail_oauth_callback,
+    methods=["GET", "POST"],
+    tags=["gmail-oauth"],
+)
+
 
 @app.get("/health")
 async def health_check():
