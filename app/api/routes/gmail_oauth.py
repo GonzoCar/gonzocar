@@ -14,7 +14,14 @@ import os
 from fastapi import APIRouter, HTTPException, Query, status
 from google_auth_oauthlib.flow import Flow
 
-SCOPES = ["https://www.googleapis.com/auth/gmail.readonly"]
+# Google may return the OpenID/email scopes alongside Gmail when account
+# selection is used. Include them explicitly so google-auth does not reject
+# the callback with "Scope has changed".
+SCOPES = [
+    "openid",
+    "https://www.googleapis.com/auth/userinfo.email",
+    "https://www.googleapis.com/auth/gmail.readonly",
+]
 
 # This is the redirect URI registered in the Google OAuth client.
 DEFAULT_REDIRECT_URI = "https://backend-production-7bb3e.up.railway.app/oauth/callback"
@@ -24,8 +31,6 @@ router = APIRouter(tags=["gmail-oauth"])
 
 def _get_redirect_uri() -> str:
     # Keep authorization and token exchange on the exact same redirect URI.
-    # Do not derive this from FRONTEND_URL because that can silently create
-    # a redirect_uri_mismatch during Google's token exchange.
     return (os.getenv("GMAIL_REDIRECT_URI") or DEFAULT_REDIRECT_URI).strip().rstrip("/")
 
 
