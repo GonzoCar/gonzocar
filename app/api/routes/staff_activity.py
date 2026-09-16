@@ -9,13 +9,7 @@ from app.models import Application, Staff, StaffActivity
 router = APIRouter(prefix="/staff-activity", tags=["staff-activity"])
 
 
-def record_activity(
-    db: Session,
-    staff: Staff,
-    event_type: str,
-    application_id=None,
-    metadata: dict | None = None,
-) -> StaffActivity:
+def record_activity(db: Session, staff: Staff, event_type: str, application_id=None, metadata: dict | None = None) -> StaffActivity:
     activity = StaffActivity(
         staff_id=staff.id,
         event_type=event_type[:50],
@@ -26,19 +20,30 @@ def record_activity(
     return activity
 
 
+def _application_id(value):
+    if not value:
+        return None
+    try:
+        from uuid import UUID
+        return UUID(str(value))
+    except (ValueError, TypeError):
+        raise HTTPException(status_code=400, detail="Invalid application_id")
+
+
 @router.post("/heartbeat")
-def heartbeat(db: Session = Depends(get_db), current_user: Staff = Depends(get_current_user)):
-    record_activity(db, current_user, "heartbeat")
+def heartbeat(payload: dict | None = None, db: Session = Depends(get_db), current_user: Staff = Depends(get_current_user)):
+    payload = payload or {}
+    application_id = _application_id(payload.get("application_id"))
+    if application_id and not db.query(Application).filter(Application.id == application_id).first():
+        raise HTTPException(status_code=404, detail="Application not found")
+    metadata = payload.get("metadata") if isinstance(payload.get("metadata"), dict) else None
+    record_activity(db, current_user, "heartbeat", application_id, metadata)
     db.commit()
     return {"ok": True, "recorded_at": datetime.utcnow().isoformat()}
 
 
 @router.post("/event")
-def event(
-    payload: dict,
-    db: Session = Depends(get_db),
-    current_user: Staff = Depends(get_current_user),
-):
+def event(payload: dict, db: Session = Depends(get_db), current_user: Staff = Depends(get_current_user)):
     event_type = str(payload.get("event_type") or "activity").strip().lower()
     allowed = {
         "session_start", "session_end", "lead_viewed", "lead_status_changed",
@@ -48,15 +53,11 @@ def event(
     if event_type not in allowed:
         raise HTTPException(status_code=400, detail="Unsupported activity event")
 
-    application_id = payload.get("application_id")
-    if application_id:
-        application = db.query(Application).filter(Application.id == application_id).first()
-        if not application:
-            raise HTTPException(status_code=404, detail="Application not found")
+    application_id = _application_id(payload.get("application_id"))
+    if application_id and not db.query(Application).filter(Application.id == application_id).first():
+        raise HTTPException(status_code=404, detail="Application not found")
 
-    metadata = payload.get("metadata")
-    if not isinstance(metadata, dict):
-        metadata = None
+    metadata = payload.get("metadata") if isinstance(payload.get("metadata"), dict) else None
     record_activity(db, current_user, event_type, application_id, metadata)
     db.commit()
     return {"ok": True}
