@@ -1,7 +1,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.api.routes import auth, drivers, applications, payments, webhooks, status, sms
+from app.api.routes import auth, gmail_oauth, drivers, applications, payments, webhooks, status, sms
 
 app = FastAPI(
     title="Gonzo Core",
@@ -20,6 +20,7 @@ app.add_middleware(
 
 # Routes
 app.include_router(auth.router, prefix="/api")
+app.include_router(gmail_oauth.router, prefix="/api")
 app.include_router(drivers.router, prefix="/api")
 app.include_router(applications.router, prefix="/api")
 app.include_router(payments.router, prefix="/api")
