@@ -64,7 +64,9 @@ def start_gmail_auth():
         authorization_url, state = flow.authorization_url(
             access_type="offline",
             include_granted_scopes="true",
-            prompt="select_account",
+            # Match the reference relay behavior: force account selection
+            # and show consent so Google can issue a fresh offline token.
+            prompt="select_account consent",
         )
     except HTTPException:
         raise
