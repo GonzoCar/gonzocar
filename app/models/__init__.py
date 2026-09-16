@@ -8,11 +8,11 @@ from .models import (
     BillingCronRun,
     Ledger,
     Staff,
+    StaffActivity,
     SystemSetting,
     SmsLog,
     Vehicle,
     DriverVehicleAssignment,
-    # Enums
     BillingType,
     BillingStatus,
     ApplicationStatus,
@@ -24,7 +24,7 @@ from .models import (
 
 __all__ = [
     "Driver",
-    "Application", 
+    "Application",
     "ApplicationComment",
     "Alias",
     "PaymentRaw",
@@ -32,6 +32,7 @@ __all__ = [
     "BillingCronRun",
     "Ledger",
     "Staff",
+    "StaffActivity",
     "SystemSetting",
     "SmsLog",
     "Vehicle",
