@@ -19,7 +19,6 @@ from google_auth_oauthlib.flow import Flow
 
 SCOPES = ["https://www.googleapis.com/auth/gmail.readonly"]
 
-# Known frontend/backend domains that may host the OAuth callback.
 KNOWN_DOMAINS = [
     "backend-production-7bb3e.up.railway.app",
     "web-production-96e71.up.railway.app",
@@ -29,22 +28,13 @@ router = APIRouter(tags=["gmail-oauth"])
 
 
 def _get_redirect_uri() -> str:
-    """
-    Determine the redirect URI to use for the OAuth flow.
-
-    Preference order:
-    1. Explicit FRONTEND_URL env var (if set).
-    2. First known domain (backend), which also hosts this callback route.
-    """
     frontend_url = (os.getenv("FRONTEND_URL") or "").strip().rstrip("/")
     if frontend_url:
         return f"{frontend_url}/oauth/callback"
-
     return f"https://{KNOWN_DOMAINS[0]}/oauth/callback"
 
 
 def _get_client_config() -> dict:
-    """Build an OAuth client config dict from env variables."""
     client_id = (os.getenv("GMAIL_CLIENT_ID") or "").strip()
     client_secret = (os.getenv("GMAIL_CLIENT_SECRET") or "").strip()
 
@@ -82,13 +72,7 @@ def _build_flow(redirect_uri: str) -> Flow:
 
 @router.get("/auth")
 def start_gmail_auth():
-    """
-    Start the Gmail OAuth flow.
-
-    Returns a Google authorization URL that the user should open in a
-    browser and grant access. After granting access, Google redirects
-    to /oauth/callback with a `code` and `state`.
-    """
+    """Start Gmail OAuth and return a Google authorization URL."""
     redirect_uri = _get_redirect_uri()
 
     try:
@@ -96,7 +80,9 @@ def start_gmail_auth():
         authorization_url, state = flow.authorization_url(
             access_type="offline",
             include_granted_scopes="true",
-            prompt="consent",
+            # Let the operator choose the correct Google account and then
+            # explicitly grant Gmail access. Google supports both values.
+            prompt="select_account consent",
         )
     except HTTPException:
         raise
@@ -114,7 +100,6 @@ def start_gmail_auth():
 
 
 def _exchange_code_for_credentials(code: str, redirect_uri: str):
-    """Try exchanging the code using the given redirect_uri."""
     flow = _build_flow(redirect_uri)
     flow.fetch_token(code=code)
     return flow.credentials
@@ -126,16 +111,6 @@ def gmail_oauth_callback(
     state: str | None = Query(default=None),
     error: str | None = Query(default=None),
 ):
-    """
-    Handle the OAuth redirect from Google.
-
-    Exchanges the authorization `code` for credentials, then returns the
-    resulting Gmail credentials/token as base64-encoded JSON, ready to be
-    set as GMAIL_CREDENTIALS / GMAIL_TOKEN environment variables.
-
-    No secrets are stored or logged; only the caller of this endpoint
-    receives the base64-encoded payload in the HTTP response.
-    """
     if error:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -161,9 +136,6 @@ def gmail_oauth_callback(
     last_error: Exception | None = None
     credentials = None
 
-    # The redirect_uri used to exchange the code must match the one used
-    # to generate the authorization URL. Since we don't persist state,
-    # try each known domain's callback URL until one works.
     candidate_redirect_uris = [f"https://{domain}/oauth/callback" for domain in KNOWN_DOMAINS]
 
     frontend_url = (os.getenv("FRONTEND_URL") or "").strip().rstrip("/")
