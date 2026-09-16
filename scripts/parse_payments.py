@@ -2,18 +2,8 @@
 """
 Cron Job: Parse Payment Emails
 
-Runs every 5 minutes to:
-1. Fetch new payment emails from Gmail
-2. Parse payment details (amount, sender, etc.)
-3. Store in payments_raw table
-4. Attempt to match with drivers via aliases
-5. Create ledger entries for matched payments
-
-Usage:
-    python scripts/parse_payments.py
-
-Crontab (every 5 min):
-    */5 * * * * cd /path/to/gonzocar && python scripts/parse_payments.py
+Runs every 5 minutes to fetch payment emails, parse them, store raw payments,
+match drivers, and create ledger credits.
 """
 
 import sys
@@ -23,7 +13,6 @@ import re
 from datetime import datetime
 from uuid import uuid4
 
-# Add project root to path
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from sqlalchemy import func
@@ -34,13 +23,10 @@ from app.services.gmail_parser import parse_email, ParsedPayment
 
 
 def get_db() -> Session:
-    """Get database session."""
     return SessionLocal()
 
 
 def is_duplicate(db: Session, source: str, transaction_id: str, gmail_id: str = None) -> bool:
-    """Check if payment already exists in database."""
-    # 1. Check by Transaction ID (if present)
     if _is_reliable_transaction_id(transaction_id):
         existing = db.query(PaymentRaw).filter(
             PaymentRaw.source == source,
@@ -48,230 +34,173 @@ def is_duplicate(db: Session, source: str, transaction_id: str, gmail_id: str = 
         ).first()
         if existing:
             return True
-
-    # 2. Check by Gmail ID (if present) - Robust fallback for same email
     if gmail_id:
-        existing_by_gmail = db.query(PaymentRaw).filter(
-            PaymentRaw.gmail_id == gmail_id
-        ).first()
+        existing_by_gmail = db.query(PaymentRaw).filter(PaymentRaw.gmail_id == gmail_id).first()
         if existing_by_gmail:
             return True
-            
     return False
 
 
 def _is_reliable_transaction_id(transaction_id: str | None) -> bool:
-    """Skip placeholder transaction IDs that cause false duplicates."""
     if not transaction_id:
         return False
     normalized = transaction_id.strip()
-    if not normalized:
-        return False
-    if normalized.lower() in {"none", "n/a", "na"}:
-        return False
-    if re.fullmatch(r"0+", normalized):
+    if not normalized or normalized.lower() in {"none", "n/a", "na"} or re.fullmatch(r"0+", normalized):
         return False
     return True
 
 
 def find_driver_by_alias(db: Session, sender_name: str, sender_identifier: str) -> Driver:
-    """Try to match sender to a driver via aliases."""
     candidates = []
     if sender_name:
         candidates.append(sender_name.strip())
     if sender_identifier:
         candidates.append(sender_identifier.strip())
-
     for candidate in candidates:
-        alias = db.query(Alias).filter(
-            func.lower(Alias.alias_value) == candidate.lower()
-        ).first()
+        alias = db.query(Alias).filter(func.lower(Alias.alias_value) == candidate.lower()).first()
         if alias:
             return db.query(Driver).filter(Driver.id == alias.driver_id).first()
-    
     return None
 
 
 def store_payment(db: Session, payment: ParsedPayment, gmail_id: str = None) -> PaymentRaw:
-    """Store parsed payment in database."""
-    # Check for duplicate
-    # Check for duplicate
     if is_duplicate(db, payment.source, payment.transaction_id, gmail_id):
-        print(f"  Skipping duplicate: {payment.source} {payment.transaction_id or gmail_id}")
         return None
-    
-    # Try to match with driver
+
     driver = find_driver_by_alias(db, payment.sender_name, payment.sender_identifier)
-    
-    # Create payment record
     payment_raw = PaymentRaw(
-        id=uuid4(),
-        source=payment.source,
-        sender_name=payment.sender_name,
-        sender_identifier=payment.sender_identifier,
-        amount=payment.amount,
-        transaction_id=payment.transaction_id,
-        memo=payment.memo,
-        received_at=payment.received_at,
-        gmail_id=gmail_id,
-        driver_id=driver.id if driver else None,
-        matched=driver is not None
+        id=uuid4(), source=payment.source, sender_name=payment.sender_name,
+        sender_identifier=payment.sender_identifier, amount=payment.amount,
+        transaction_id=payment.transaction_id, memo=payment.memo,
+        received_at=payment.received_at, gmail_id=gmail_id,
+        driver_id=driver.id if driver else None, matched=driver is not None
     )
-    
     db.add(payment_raw)
-    db.flush()  # Ensure it's visible to subsequent is_duplicate checks within the same transaction
-    
-    # If matched, create ledger entry
+    db.flush()
+
     if driver:
-        ledger_entry = Ledger(
-            id=uuid4(),
-            driver_id=driver.id,
-            type='credit',
-            amount=payment.amount,
+        db.add(Ledger(
+            id=uuid4(), driver_id=driver.id, type='credit', amount=payment.amount,
             description=f"{payment.source.upper()} payment from {payment.sender_name}",
-            reference_id=str(payment_raw.id),
-            created_at=datetime.utcnow()
-        )
-        db.add(ledger_entry)
-        print(f"  Matched to driver: {driver.first_name} {driver.last_name}")
-    
+            reference_id=str(payment_raw.id), created_at=datetime.utcnow()
+        ))
     return payment_raw
 
 
-def process_email(db: Session, raw_email: bytes, gmail_id: str = None) -> bool:
-    """Process a single email."""
+def process_email(db: Session, raw_email: bytes, gmail_id: str = None) -> tuple[bool, str]:
     payment = parse_email(raw_email)
-    
     if not payment:
-        return False
-    
-    print(f"  Parsed: {payment.source} ${payment.amount:.2f} from {payment.sender_name}")
-    
+        return False, "unparsed"
     result = store_payment(db, payment, gmail_id)
-    return result is not None
+    if result is None:
+        return False, "duplicate"
+    if result.matched:
+        return True, "matched"
+    return True, "unmatched"
 
 
 def get_last_payment_created_at(db: Session):
-    """Return latest created_at from payments_raw, if any."""
     row = db.query(PaymentRaw.created_at).order_by(PaymentRaw.created_at.desc()).first()
-    if not row:
-        return None
-    return row[0]
+    return row[0] if row else None
 
 
 def compute_backfill_hours(last_created_at: datetime, min_hours: int = 1, safety_hours: int = 1) -> int:
-    """Compute lookback window from last parsed payment to now."""
     if not last_created_at:
         return max(1, min_hours)
-
     now = datetime.utcnow()
-    reference = last_created_at
-    if reference.tzinfo is not None:
-        reference = reference.replace(tzinfo=None)
-
+    reference = last_created_at.replace(tzinfo=None) if last_created_at.tzinfo is not None else last_created_at
     delta_hours = max(0.0, (now - reference).total_seconds() / 3600.0)
     return max(min_hours, math.ceil(delta_hours) + max(0, safety_hours))
 
 
 def run_with_gmail(hours: int = 1, max_results: int = 50) -> bool:
-    """Fetch and process emails from Gmail API."""
     try:
         from app.services.gmail_service import GmailService
     except ImportError as e:
         print(f"Gmail service import error: {e}")
-        print("Install with: pip install google-auth-oauthlib google-api-python-client")
         return False
 
-    # Credentials can come from env (base64/raw JSON) or local files.
     has_env_credentials = bool(os.getenv('GMAIL_CREDENTIALS')) and bool(os.getenv('GMAIL_TOKEN'))
     has_file_credentials = os.path.exists('credentials.json') and os.path.exists('token.json')
     if not (has_env_credentials or has_file_credentials):
         print("Error: Gmail credentials are not configured.")
-        print("Set GMAIL_CREDENTIALS/GMAIL_TOKEN or provide credentials.json + token.json.")
         return False
-    
-    print(f"[{datetime.now()}] Starting payment email parser (looking back {hours} hours, max {max_results} emails)")
+
+    print(f"Parser start: lookback_hours={hours} max_results={max_results}")
     print("Connecting to Gmail API...")
-    
+
     try:
         gmail = GmailService()
         try:
             profile = gmail.service.users().getProfile(userId='me').execute()
             connected_email = profile.get('emailAddress')
-            if connected_email:
-                print(f"Connected to Gmail API as {connected_email}")
-            else:
-                print("Connected to Gmail API")
+            print(f"Connected to Gmail API as {connected_email}" if connected_email else "Connected to Gmail API")
         except Exception:
             print("Connected to Gmail API")
 
         emails = gmail.fetch_emails(since_hours=hours, max_results=max_results)
-        
-        print(f"Found {len(emails)} payment emails")
-        
+        print(f"Parser fetch: found={len(emails)}")
         if not emails:
+            print("Parser complete: found=0 parsed=0 new=0 matched=0 unmatched=0 duplicate=0 failed=0")
             return True
-        
+
         db = get_db()
-        processed = 0
-        failed = 0
-        
+        new_count = matched = unmatched = duplicate = unparsed = failed = 0
         try:
             for email_data in emails:
                 gmail_id = email_data["gmail_id"]
-                print(f"\nProcessing email {gmail_id}...")
                 try:
-                    if process_email(db, email_data["raw"], gmail_id):
+                    created, outcome = process_email(db, email_data["raw"], gmail_id)
+                    if created:
                         db.commit()
-                        processed += 1
+                        new_count += 1
+                        matched += outcome == "matched"
+                        unmatched += outcome == "unmatched"
+                    else:
+                        db.rollback()
+                        duplicate += outcome == "duplicate"
+                        unparsed += outcome == "unparsed"
                 except Exception as email_error:
                     db.rollback()
                     failed += 1
-                    print(f"  Error processing email {gmail_id}: {email_error}")
+                    print(f"Parser email error: gmail_id={gmail_id[:16]} error={type(email_error).__name__}")
 
-            print(f"\nDone! Processed {processed} new payments" + (f", failed {failed}" if failed else ""))
+            print(
+                f"Parser complete: found={len(emails)} new={new_count} matched={matched} "
+                f"unmatched={unmatched} duplicate={duplicate} unparsed={unparsed} failed={failed}"
+            )
             return True
-            
         finally:
             db.close()
-            
     except Exception as e:
-        print(f"Error: {e}")
+        print(f"Parser fatal error: {type(e).__name__}: {e}")
         return False
 
 
 def run_with_local_files(directory: str) -> bool:
-    """Process .eml files from a local directory (for testing)."""
     from pathlib import Path
-    
-    print(f"[{datetime.now()}] Processing local .eml files from {directory}")
-    
     eml_files = list(Path(directory).rglob('*.eml'))
-    print(f"Found {len(eml_files)} .eml files")
-    
+    print(f"Local parser start: files={len(eml_files)}")
     if not eml_files:
         return True
-    
     db = get_db()
-    processed = 0
-    failed = 0
-    
+    processed = failed = 0
     try:
         for eml_path in eml_files:
-            print(f"\nProcessing {eml_path.name}...")
             try:
                 with open(eml_path, 'rb') as f:
-                    if process_email(db, f.read()):
+                    created, _ = process_email(db, f.read())
+                    if created:
                         db.commit()
                         processed += 1
+                    else:
+                        db.rollback()
             except Exception as file_error:
                 db.rollback()
                 failed += 1
-                print(f"  Error processing {eml_path.name}: {file_error}")
-
-        print(f"\nDone! Processed {processed} new payments" + (f", failed {failed}" if failed else ""))
+                print(f"Local parser error: file={eml_path.name} error={type(file_error).__name__}")
+        print(f"Local parser complete: files={len(eml_files)} new={processed} failed={failed}")
         return True
-        
     finally:
         db.close()
 
@@ -279,26 +208,18 @@ def run_with_local_files(directory: str) -> bool:
 if __name__ == "__main__":
     success = False
     if len(sys.argv) > 1 and sys.argv[1].endswith('.eml'):
-        # Process local directory/files (legacy support)
         success = run_with_local_files(sys.argv[1])
     else:
-        # Check for --hours argument
         hours = 1
         if '--hours' in sys.argv:
             try:
-                idx = sys.argv.index('--hours')
-                hours = int(sys.argv[idx + 1])
+                hours = int(sys.argv[sys.argv.index('--hours') + 1])
             except (ValueError, IndexError):
                 print("Invalid --hours argument, defaulting to 1 hour")
 
         max_results = 50
         use_from_last = '--from-last' in sys.argv
-
-        # In GitHub Actions schedule mode, enable backfill by default.
-        # This prevents gaps when cron triggers are delayed.
         if os.getenv("GITHUB_ACTIONS", "").lower() == "true" and '--no-from-last' not in sys.argv:
-            if not use_from_last:
-                print("GITHUB_ACTIONS detected: enabling --from-last backfill mode")
             use_from_last = True
 
         if use_from_last:
@@ -307,17 +228,11 @@ if __name__ == "__main__":
                 last_created_at = get_last_payment_created_at(db)
             finally:
                 db.close()
-
             if last_created_at:
-                computed_hours = compute_backfill_hours(last_created_at, min_hours=hours, safety_hours=1)
-                print(f"Last parsed payment was at {last_created_at.isoformat()}")
-                print(f"Using backfill window of {computed_hours} hours from last parsed payment")
-                hours = computed_hours
+                hours = compute_backfill_hours(last_created_at, min_hours=hours, safety_hours=1)
                 max_results = 2000
-            else:
-                print("No existing parsed payments found. Using default window.")
+                print(f"Parser backfill: last_created_at={last_created_at.isoformat()} lookback_hours={hours}")
 
-        # Production mode: fetch from Gmail
         success = run_with_gmail(hours=hours, max_results=max_results)
 
     if not success:
