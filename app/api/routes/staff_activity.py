@@ -14,7 +14,7 @@ def record_activity(db: Session, staff: Staff, event_type: str, application_id=N
         staff_id=staff.id,
         event_type=event_type[:50],
         application_id=application_id,
-        metadata=metadata,
+        activity_metadata=metadata,
     )
     db.add(activity)
     return activity
@@ -46,7 +46,7 @@ def heartbeat(payload: dict | None = None, db: Session = Depends(get_db), curren
 def event(payload: dict, db: Session = Depends(get_db), current_user: Staff = Depends(get_current_user)):
     event_type = str(payload.get("event_type") or "activity").strip().lower()
     allowed = {
-        "session_start", "session_end", "lead_viewed", "lead_status_changed",
+        "session_start", "session_end", "lead_viewed", "leads_checked", "lead_status_changed",
         "lead_comment_added", "lead_reconciled", "driver_viewed", "payment_viewed",
         "heartbeat",
     }
@@ -87,7 +87,7 @@ def list_activity(
             "staff_name": row.staff.name if row.staff else None,
             "event_type": row.event_type,
             "application_id": str(row.application_id) if row.application_id else None,
-            "metadata": row.metadata,
+            "metadata": row.activity_metadata,
             "created_at": row.created_at.isoformat(),
         }
         for row in rows
