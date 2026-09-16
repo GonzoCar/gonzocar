@@ -1,7 +1,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.api.routes import auth, gmail_oauth, drivers, applications, payments, webhooks, status, sms
+from app.api.routes import auth, gmail_oauth, drivers, applications, payments, webhooks, status, sms, staff_activity
 
 app = FastAPI(
     title="Gonzo Core",
@@ -12,7 +12,7 @@ app = FastAPI(
 # CORS for admin panel
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Update for production
+    allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -26,7 +26,8 @@ app.include_router(applications.router, prefix="/api")
 app.include_router(payments.router, prefix="/api")
 app.include_router(status.router, prefix="/api")
 app.include_router(sms.router, prefix="/api")
-app.include_router(webhooks.router)  # No prefix, webhook at root
+app.include_router(staff_activity.router, prefix="/api")
+app.include_router(webhooks.router)
 
 # Google OAuth callback at the root path, matching the registered redirect URI.
 app.add_api_route(
