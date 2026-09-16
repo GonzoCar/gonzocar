@@ -1,12 +1,19 @@
 from datetime import datetime, timedelta
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.orm import Session
 
 from app.api.deps import get_db, get_current_user
 from app.models import Application, Staff, StaffActivity
 
 router = APIRouter(prefix="/staff-activity", tags=["staff-activity"])
+
+
+def get_client_ip(request: Request) -> str | None:
+    forwarded = request.headers.get("x-forwarded-for")
+    if forwarded:
+        return forwarded.split(",")[0].strip()
+    return request.headers.get("x-real-ip") or (request.client.host if request.client else None)
 
 
 def record_activity(db: Session, staff: Staff, event_type: str, application_id=None, metadata: dict | None = None) -> StaffActivity:
@@ -31,19 +38,20 @@ def _application_id(value):
 
 
 @router.post("/heartbeat")
-def heartbeat(payload: dict | None = None, db: Session = Depends(get_db), current_user: Staff = Depends(get_current_user)):
+def heartbeat(payload: dict | None = None, request: Request = None, db: Session = Depends(get_db), current_user: Staff = Depends(get_current_user)):
     payload = payload or {}
     application_id = _application_id(payload.get("application_id"))
     if application_id and not db.query(Application).filter(Application.id == application_id).first():
         raise HTTPException(status_code=404, detail="Application not found")
-    metadata = payload.get("metadata") if isinstance(payload.get("metadata"), dict) else None
+    metadata = dict(payload.get("metadata")) if isinstance(payload.get("metadata"), dict) else {}
+    metadata.setdefault("ip", get_client_ip(request))
     record_activity(db, current_user, "heartbeat", application_id, metadata)
     db.commit()
     return {"ok": True, "recorded_at": datetime.utcnow().isoformat()}
 
 
 @router.post("/event")
-def event(payload: dict, db: Session = Depends(get_db), current_user: Staff = Depends(get_current_user)):
+def event(payload: dict, request: Request, db: Session = Depends(get_db), current_user: Staff = Depends(get_current_user)):
     event_type = str(payload.get("event_type") or "activity").strip().lower()
     allowed = {
         "session_start", "session_end", "lead_viewed", "leads_checked", "lead_status_changed",
@@ -57,7 +65,8 @@ def event(payload: dict, db: Session = Depends(get_db), current_user: Staff = De
     if application_id and not db.query(Application).filter(Application.id == application_id).first():
         raise HTTPException(status_code=404, detail="Application not found")
 
-    metadata = payload.get("metadata") if isinstance(payload.get("metadata"), dict) else None
+    metadata = dict(payload.get("metadata")) if isinstance(payload.get("metadata"), dict) else {}
+    metadata.setdefault("ip", get_client_ip(request))
     record_activity(db, current_user, event_type, application_id, metadata)
     db.commit()
     return {"ok": True}
