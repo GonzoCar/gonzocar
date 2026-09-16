@@ -11,21 +11,17 @@ import Payments from './pages/Payments';
 import Settings from './pages/Settings';
 import TicketFinder from './pages/TicketFinder';
 import DriverPortal from './pages/DriverPortal';
+import StaffActivity from './pages/StaffActivity';
 import './index.css';
 
 function PrivateRoute({ children }: { children: React.ReactNode }) {
   const { isAuthenticated, loading } = useAuth();
-
-  if (loading) {
-    return <div className="loading" style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>Loading</div>;
-  }
-
+  if (loading) return <div className="loading" style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>Loading</div>;
   return isAuthenticated ? <>{children}</> : <Navigate to="/login" />;
 }
 
 function AppRoutes() {
   const { isAuthenticated } = useAuth();
-
   return (
     <Routes>
       <Route path="/portal/:token" element={<DriverPortal />} />
@@ -38,6 +34,7 @@ function AppRoutes() {
         <Route path="drivers/:id" element={<DriverDetail />} />
         <Route path="ticket-finder" element={<TicketFinder />} />
         <Route path="payments" element={<Payments />} />
+        <Route path="staff-activity" element={<StaffActivity />} />
         <Route path="settings" element={<Settings />} />
       </Route>
     </Routes>
@@ -45,13 +42,7 @@ function AppRoutes() {
 }
 
 function App() {
-  return (
-    <BrowserRouter>
-      <AuthProvider>
-        <AppRoutes />
-      </AuthProvider>
-    </BrowserRouter>
-  );
+  return <BrowserRouter><AuthProvider><AppRoutes /></AuthProvider></BrowserRouter>;
 }
 
 export default App;
