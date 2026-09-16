@@ -81,7 +81,6 @@ class Driver(Base):
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
-    # Relationships
     applications = relationship("Application", back_populates="driver")
     aliases = relationship("Alias", back_populates="driver", cascade="all, delete-orphan")
     payments = relationship("PaymentRaw", back_populates="driver")
@@ -128,7 +127,6 @@ class Application(Base):
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
-    # Relationships
     driver = relationship("Driver", back_populates="applications")
     comments = relationship("ApplicationComment", back_populates="application", cascade="all, delete-orphan")
 
@@ -142,7 +140,6 @@ class ApplicationComment(Base):
     content = Column(Text, nullable=False)
     created_at = Column(DateTime, default=datetime.utcnow)
 
-    # Relationships
     application = relationship("Application", back_populates="comments")
     staff = relationship("Staff", back_populates="comments")
 
@@ -156,11 +153,9 @@ class Alias(Base):
     alias_value = Column(String(255), nullable=False)
     created_at = Column(DateTime, default=datetime.utcnow)
 
-    # Relationships
     driver = relationship("Driver", back_populates="aliases")
 
     __table_args__ = (
-        # Enforce case-insensitive uniqueness for alias matching.
         Index("uq_aliases_type_lower_value", "alias_type", func.lower(alias_value), unique=True),
         {"sqlite_autoincrement": True},
     )
@@ -182,7 +177,6 @@ class PaymentRaw(Base):
     driver_id = Column(UUID(as_uuid=True), ForeignKey("drivers.id"), nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
 
-    # Relationships
     driver = relationship("Driver", back_populates="payments")
 
 
@@ -231,7 +225,6 @@ class Ledger(Base):
     reversal_of_id = Column(UUID(as_uuid=True), nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
 
-    # Relationships
     driver = relationship("Driver", back_populates="ledger_entries")
 
 
@@ -245,8 +238,27 @@ class Staff(Base):
     role = Column(Enum(StaffRole), default=StaffRole.staff)
     created_at = Column(DateTime, default=datetime.utcnow)
 
-    # Relationships
     comments = relationship("ApplicationComment", back_populates="staff")
+    activities = relationship("StaffActivity", back_populates="staff", cascade="all, delete-orphan")
+
+
+class StaffActivity(Base):
+    __tablename__ = "staff_activity"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    staff_id = Column(UUID(as_uuid=True), ForeignKey("staff.id"), nullable=False)
+    event_type = Column(String(50), nullable=False)
+    application_id = Column(UUID(as_uuid=True), ForeignKey("applications.id"), nullable=True)
+    metadata = Column(JSONB, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+
+    staff = relationship("Staff", back_populates="activities")
+    application = relationship("Application")
+
+    __table_args__ = (
+        Index("ix_staff_activity_staff_created_at", "staff_id", "created_at"),
+        Index("ix_staff_activity_application_created_at", "application_id", "created_at"),
+    )
 
 
 class SystemSetting(Base):
@@ -269,5 +281,4 @@ class SmsLog(Base):
     openphone_response = Column(JSONB, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
 
-    # Relationships
     driver = relationship("Driver", back_populates="sms_logs")
