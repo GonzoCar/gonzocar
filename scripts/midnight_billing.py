@@ -65,7 +65,7 @@ def reminder_mode_is_automatic() -> bool:
 
     try:
         with get_db() as db:
-            value = db.execute(text("SELECT value FROM settings WHERE key = 'reminder_mode' LIMIT 1")).scalar()
+            value = db.execute(text("SELECT value FROM system_settings WHERE key = 'reminder_mode' LIMIT 1")).scalar()
             if value is None:
                 return False
             return str(value).strip().lower() == "automatic"
