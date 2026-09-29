@@ -180,6 +180,24 @@ class PaymentRaw(Base):
     driver = relationship("Driver", back_populates="payments")
 
 
+class InboundEmail(Base):
+    """Durable archive of every Gmail message fetched by the ingestion worker."""
+
+    __tablename__ = "inbound_emails"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    gmail_id = Column(String(255), unique=True, nullable=False, index=True)
+    sender = Column(String(500), nullable=True)
+    recipients = Column(Text, nullable=True)
+    subject = Column(String(1000), nullable=True)
+    received_at = Column(DateTime, nullable=True)
+    category = Column(String(50), nullable=False, default="unknown")
+    parse_status = Column(String(50), nullable=False, default="unprocessed")
+    raw_email = Column(LargeBinary, nullable=False)
+    error_message = Column(Text, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+
+
 class PaymentParserRun(Base):
     __tablename__ = "payment_parser_runs"
 
