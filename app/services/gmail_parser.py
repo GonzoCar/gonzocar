@@ -503,6 +503,7 @@ PARSERS = [
     VenmoParser,
     ChimeParser,
     StripeParser,
+    GenericPaymentParser,
 ]
 
 
