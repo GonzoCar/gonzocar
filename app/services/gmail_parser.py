@@ -447,7 +447,8 @@ class GenericPaymentParser:
             subject = re.sub(r'\s+', ' ', msg.get('Subject', '')).strip()
             text = re.sub(r'<[^>]+>', ' ', body)
             text = re.sub(r'\s+', ' ', text).strip()
-            combined = f"{subject} {text}"
+            from_addr = msg.get('From', '')
+            combined = f"{subject} {from_addr} {text}"
 
             patterns = [
                 r'(?P<name>[^|<>]{2,80}?)\s+(?:sent|paid) you\s+\$?(?P<amount>[\d,]+(?:\.\d{1,2})?)',
