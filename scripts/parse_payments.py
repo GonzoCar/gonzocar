@@ -30,13 +30,8 @@ def get_db() -> Session:
 
 
 def is_duplicate(db: Session, source: str, transaction_id: str, gmail_id: str = None) -> bool:
-    if _is_reliable_transaction_id(transaction_id):
-        existing = db.query(PaymentRaw).filter(
-            PaymentRaw.source == source,
-            PaymentRaw.transaction_id == transaction_id
-        ).first()
-        if existing:
-            return True
+    # A second client payment is a real payment and must be retained.
+    # Only the exact same Gmail message is a duplicate ingestion.
     if gmail_id:
         existing_by_gmail = db.query(PaymentRaw).filter(PaymentRaw.gmail_id == gmail_id).first()
         if existing_by_gmail:
@@ -275,6 +270,12 @@ if __name__ == "__main__":
                 hours = compute_backfill_hours(last_created_at, min_hours=hours, safety_hours=1)
                 max_results = 2000
                 print(f"Parser backfill: last_inbound_received_at={last_created_at.isoformat()} lookback_hours={hours}")
+            else:
+                # First archive run: recover recent historical mail so existing payments
+                # are not invisible just because the archive table started empty.
+                hours = max(hours, 168)
+                max_results = 2000
+                print(f"Parser initial backfill: lookback_hours={hours} max_results={max_results}")
 
         success = run_with_gmail(hours=hours, max_results=max_results)
 
