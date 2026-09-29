@@ -434,6 +434,68 @@ class StripeParser:
             return None
 
 
+class GenericPaymentParser:
+    """Conservative fallback for payment templates that change their HTML/subject wording."""
+
+    @staticmethod
+    def can_parse(from_addr: str, subject: str) -> bool:
+        return True
+
+    @staticmethod
+    def parse(msg: email.message.Message, body: str) -> Optional[ParsedPayment]:
+        try:
+            subject = re.sub(r'\s+', ' ', msg.get('Subject', '')).strip()
+            text = re.sub(r'<[^>]+>', ' ', body)
+            text = re.sub(r'\s+', ' ', text).strip()
+            combined = f"{subject} {text}"
+
+            patterns = [
+                r'(?P<name>[^|<>]{2,80}?)\s+(?:sent|paid) you\s+\$?(?P<amount>[\d,]+(?:\.\d{1,2})?)',
+                r'(?:you received|payment received|received)\s+\$?(?P<amount>[\d,]+(?:\.\d{1,2})?)\s+(?:from|by)\s+(?P<name>[^|<>]{2,80}?)(?:\s+for\s+|$)',
+                r'(?P<name>[^|<>]{2,80}?)\s+(?:just )?sent you money[^$]{0,80}\$?(?P<amount>[\d,]+(?:\.\d{1,2})?)',
+            ]
+            match = next((re.search(p, combined, re.IGNORECASE) for p in patterns if re.search(p, combined, re.IGNORECASE)), None)
+            if not match:
+                return None
+
+            name = re.sub(r'\s+', ' ', match.group('name')).strip(' -:')
+            amount = float(match.group('amount').replace(',', ''))
+            if not name or name.lower() in {'you', 'unknown', 'cash app'} or amount <= 0:
+                return None
+
+            lower = combined.lower()
+            if 'zelle' in lower or 'chase' in lower:
+                source = 'zelle'
+            elif 'cash app' in lower or 'square' in lower:
+                source = 'cashapp'
+            elif 'venmo' in lower:
+                source = 'venmo'
+            elif 'chime' in lower:
+                source = 'chime'
+            elif 'stripe' in lower:
+                source = 'stripe'
+            else:
+                return None
+
+            tx_match = re.search(r'(?:transaction(?:\s+(?:id|number))?|payment(?:\s+id)?)[^A-Za-z0-9]{0,12}([A-Za-z0-9_-]{6,})', combined, re.IGNORECASE)
+            transaction_id = tx_match.group(1) if tx_match else None
+            memo_match = re.search(r'(?:memo|note|for)\s*[:\-]?\s*([^|<>]{2,100})', combined, re.IGNORECASE)
+            memo = memo_match.group(1).strip() if memo_match else None
+
+            return ParsedPayment(
+                source=source,
+                amount=amount,
+                sender_name=name.title(),
+                sender_identifier=None,
+                transaction_id=transaction_id,
+                memo=memo,
+                received_at=parse_email_date(msg),
+            )
+        except Exception as e:
+            print(f"Generic payment parse error: {e}")
+            return None
+
+
 # Parser registry
 PARSERS = [
     ZelleParser,
