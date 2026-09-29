@@ -21,7 +21,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 from app.core.database import SessionLocal
-from app.models.models import PaymentRaw, Alias, Ledger, Driver
+from app.models.models import PaymentRaw, Alias, Ledger, Driver, InboundEmail
 from app.services.gmail_parser import parse_email, ParsedPayment
 
 
@@ -135,6 +135,11 @@ def process_email(db: Session, raw_email: bytes, gmail_id: str = None) -> tuple[
     return True, "unmatched"
 
 
+def get_last_inbound_email_received_at(db: Session):
+    row = db.query(InboundEmail.received_at).filter(InboundEmail.received_at.isnot(None)).order_by(InboundEmail.received_at.desc()).first()
+    return row[0] if row else None
+
+
 def get_last_payment_created_at(db: Session):
     row = db.query(PaymentRaw.created_at).order_by(PaymentRaw.created_at.desc()).first()
     return row[0] if row else None
@@ -231,7 +236,8 @@ def run_with_local_files(directory: str) -> bool:
                         db.commit()
                         processed += 1
                     else:
-                        db.rollback()
+                        # Keep archived inbound email records even when the payment is a duplicate/unparsed.
+                        db.commit()
             except Exception as file_error:
                 db.rollback()
                 failed += 1
@@ -262,13 +268,13 @@ if __name__ == "__main__":
         if use_from_last:
             db = get_db()
             try:
-                last_created_at = get_last_payment_created_at(db)
+                last_created_at = get_last_inbound_email_received_at(db)
             finally:
                 db.close()
             if last_created_at:
                 hours = compute_backfill_hours(last_created_at, min_hours=hours, safety_hours=1)
                 max_results = 2000
-                print(f"Parser backfill: last_created_at={last_created_at.isoformat()} lookback_hours={hours}")
+                print(f"Parser backfill: last_inbound_received_at={last_created_at.isoformat()} lookback_hours={hours}")
 
         success = run_with_gmail(hours=hours, max_results=max_results)
 
