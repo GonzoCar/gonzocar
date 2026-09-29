@@ -503,4 +503,13 @@ class ApiService {
 }
 
 export const api = new ApiService();
+    getInboundEmails: async (category?: string, parseStatus?: string) => {
+        const params = new URLSearchParams();
+        if (category) params.set('category', category);
+        if (parseStatus) params.set('parse_status', parseStatus);
+        const query = params.toString();
+        const response = await apiClient.get(`/payments/inbox${query ? `?${query}` : ''}`);
+        return response.data;
+    },
+
 export default api;
