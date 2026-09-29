@@ -10,6 +10,9 @@ import sys
 import os
 import math
 import re
+import email
+from email import policy
+from email.parser import BytesParser
 from datetime import datetime
 from uuid import uuid4
 
@@ -87,13 +90,46 @@ def store_payment(db: Session, payment: ParsedPayment, gmail_id: str = None) -> 
     return payment_raw
 
 
+def archive_inbound_email(db: Session, raw_email: bytes, gmail_id: str) -> InboundEmail:
+    existing = db.query(InboundEmail).filter(InboundEmail.gmail_id == gmail_id).first()
+    if existing:
+        return existing
+
+    msg = BytesParser(policy=policy.default).parsebytes(raw_email)
+    recipients = ', '.join(msg.get_all('To', []) + msg.get_all('Cc', []))
+    received_at = None
+    try:
+        from email.utils import parsedate_to_datetime
+        received_at = parsedate_to_datetime(msg.get('Date', '')).replace(tzinfo=None)
+    except Exception:
+        pass
+
+    record = InboundEmail(id=uuid4(), gmail_id=gmail_id, sender=msg.get('From'),
+        recipients=recipients, subject=msg.get('Subject'), received_at=received_at,
+        category='unknown', parse_status='unprocessed', raw_email=raw_email)
+    db.add(record)
+    db.flush()
+    return record
+
+def classify_inbound(record: InboundEmail, payment: ParsedPayment | None) -> str:
+    if payment:
+        return 'payment'
+    haystack = f"{record.subject or ''} {record.sender or ''}".lower()
+    lead_terms = ('lead', 'application', 'applicant', 'inquiry', 'quote request', 'new customer', 'new driver', 'contact form')
+    return 'lead' if any(term in haystack for term in lead_terms) else 'other'
+
 def process_email(db: Session, raw_email: bytes, gmail_id: str = None) -> tuple[bool, str]:
+    archive = archive_inbound_email(db, raw_email, gmail_id or str(uuid4()))
     payment = parse_email(raw_email)
+    archive.category = classify_inbound(archive, payment)
     if not payment:
+        archive.parse_status = "unparsed"
         return False, "unparsed"
     result = store_payment(db, payment, gmail_id)
     if result is None:
+        archive.parse_status = "duplicate"
         return False, "duplicate"
+    archive.parse_status = "parsed"
     if result.matched:
         return True, "matched"
     return True, "unmatched"
