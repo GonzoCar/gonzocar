@@ -20,6 +20,39 @@ from app.schemas import PaymentResponse, PaymentAssign
 router = APIRouter(prefix="/payments", tags=["payments"])
 
 
+@router.get("/inbox")
+def list_inbound_emails(
+    category: str | None = None,
+    parse_status: str | None = None,
+    skip: int = 0,
+    limit: int = 200,
+    db: Session = Depends(get_db),
+    current_user: Staff = Depends(get_current_user),
+):
+    """Show the durable Gmail archive so no fetched payment/lead email disappears."""
+    from app.models import InboundEmail
+    query = db.query(InboundEmail)
+    if category:
+        query = query.filter(InboundEmail.category == category)
+    if parse_status:
+        query = query.filter(InboundEmail.parse_status == parse_status)
+    rows = query.order_by(InboundEmail.received_at.desc()).offset(skip).limit(min(limit, 500)).all()
+    return [
+        {
+            "id": str(row.id),
+            "gmail_id": row.gmail_id,
+            "sender": row.sender,
+            "recipients": row.recipients,
+            "subject": row.subject,
+            "received_at": row.received_at.isoformat() if row.received_at else None,
+            "category": row.category,
+            "parse_status": row.parse_status,
+            "error_message": row.error_message,
+        }
+        for row in rows
+    ]
+
+
 @router.get("/unrecognized", response_model=list[PaymentResponse])
 def list_unrecognized(
     db: Session = Depends(get_db),
