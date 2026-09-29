@@ -24,8 +24,14 @@ router = APIRouter(prefix="/status", tags=["status"])
 
 
 def _get_setting(db: Session, key: str, default: str | None = None) -> str | None:
-    row = db.query(SystemSetting).filter(SystemSetting.key == key).first()
-    return row.value if row else default
+    try:
+        row = db.query(SystemSetting).filter(SystemSetting.key == key).first()
+        return row.value if row else default
+    except SQLAlchemyError:
+        # Keep health/status endpoints usable while a fresh environment is
+        # completing migrations.
+        db.rollback()
+        return default
 
 
 def _set_setting(db: Session, key: str, value: str) -> str:
