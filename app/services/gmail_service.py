@@ -151,13 +151,10 @@ class GmailService:
         since = datetime.now(timezone.utc) - timedelta(hours=safe_hours)
         since_ts = int(since.timestamp())
         
-        # Build sender filter (OR between known payment providers)
-        sender_queries = [f'from:{sender}' for sender in PAYMENT_SENDERS]
-        recipient_queries = [f'to:{addr}' for addr in PAYMENT_INBOXES]
-        delivered_queries = [f'deliveredto:{addr}' for addr in PAYMENT_INBOXES]
-        address_filter = ' OR '.join(sender_queries + recipient_queries + delivered_queries)
-        
-        return f'({address_filter}) after:{since_ts}'
+        # Never narrow ingestion to known payment templates: provider addresses and
+        # recipient aliases change, and lead emails may come from arbitrary senders.
+        # Search the mailbox itself, then classify after retrieval.
+        return f'in:anywhere after:{since_ts}'
     
     def fetch_emails(self, since_hours: int = 1, max_results: int = 50) -> List[dict]:
         """
