@@ -193,7 +193,8 @@ def run_with_gmail(hours: int = 1, max_results: int = 50) -> bool:
                         matched += outcome == "matched"
                         unmatched += outcome == "unmatched"
                     else:
-                        db.rollback()
+                        # Preserve the durable inbox archive even when parsing fails.
+                        db.commit()
                         duplicate += outcome == "duplicate"
                         unparsed += outcome == "unparsed"
                 except Exception as email_error:
