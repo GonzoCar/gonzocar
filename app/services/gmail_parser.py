@@ -83,14 +83,24 @@ class ZelleParser:
     def parse(msg: email.message.Message, body: str) -> Optional[ParsedPayment]:
         try:
             # 1. Sender name
-            # Pattern A: "<h1>NAME sent you money"
-            sender_match = re.search(r'<h1[^>]*>\s*([^<]+?)\s+sent you money', body, re.IGNORECASE)
+            # Parse visible text, not CSS/style/template markup.
+            visible_body = re.sub(r'(?is)<style[^>]*>.*?</style>', ' ', body)
+            visible_body = re.sub(r'(?is)<script[^>]*>.*?</script>', ' ', visible_body)
+            visible_body = re.sub(r'(?is)<!--.*?-->', ' ', visible_body)
+            visible_body = re.sub(r'<[^>]+>', ' ', visible_body)
+            visible_body = re.sub(r'&nbsp;|&#160;', ' ', visible_body, flags=re.IGNORECASE)
+            visible_body = re.sub(r'\s+', ' ', visible_body).strip()
+
+            # Pattern A: "NAME sent you money"
+            sender_match = re.search(r'\b([^<>]{2,100}?)\s+sent you money\b', visible_body, re.IGNORECASE)
             
             # Pattern B: "You received $X from NAME"
             if not sender_match:
-                sender_match = re.search(r'You received \$[\d,]+\.?\d* from ([^<\n]+)', body, re.IGNORECASE)
+                sender_match = re.search(r'You received \$[\d,]+\.?\d*\s+from\s+([^<>]{2,100}?)(?:\s+on\s+|\s+for\s+|\s*$)', visible_body, re.IGNORECASE)
                 
-            sender_name = sender_match.group(1).strip().title() if sender_match else "Unknown"
+            sender_name = sender_match.group(1).strip(' -:').title() if sender_match else "Unknown"
+            # Remove common notification/template prefixes that are not part of a person's name.
+            sender_name = re.sub(r'^(?:zelle\s*(?:®|&reg;)?\s*payment)\s+', '', sender_name, flags=re.IGNORECASE).strip()
             
             # 2. Amount
             # Pattern A: ">$XXX.XX</td>" in table
