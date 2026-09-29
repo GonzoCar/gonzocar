@@ -16,7 +16,7 @@ from app.models import BillingCronRun, PaymentParserRun, Staff, SystemSetting
 from app.services.gmail_service import GmailService
 from scripts.parse_payments import (
     compute_backfill_hours,
-    get_last_payment_created_at,
+    get_last_inbound_email_received_at,
     run_with_gmail,
 )
 
@@ -131,13 +131,15 @@ def run_payment_parser(
     """
     _validate_internal_cron_token(authorization, x_cron_token)
 
-    last_created_at = get_last_payment_created_at(db)
+    last_inbound_received_at = get_last_inbound_email_received_at(db)
 
-    hours = 1
-    max_results = 200
-    if last_created_at:
-        hours = compute_backfill_hours(last_created_at, min_hours=hours, safety_hours=1)
-        max_results = 2000
+    # The inbox archive is the ingestion cursor. If it is empty (first run after
+    # migration), deliberately backfill a full week so existing payment/lead mail
+    # is recovered instead of limiting the first scan to one hour.
+    hours = 168
+    max_results = 2000
+    if last_inbound_received_at:
+        hours = compute_backfill_hours(last_inbound_received_at, min_hours=1, safety_hours=1)
 
     trigger_source = (x_cron_source or "railway-cron").strip()[:50] or "railway-cron"
     parser_run = PaymentParserRun(
@@ -179,7 +181,7 @@ def run_payment_parser(
         "executed_at": datetime.utcnow().isoformat(),
         "lookback_hours": hours,
         "max_results": max_results,
-        "last_payment_created_at": last_created_at.isoformat() if last_created_at else None,
+        "last_inbound_received_at": last_inbound_received_at.isoformat() if last_inbound_received_at else None,
     }
 
 
