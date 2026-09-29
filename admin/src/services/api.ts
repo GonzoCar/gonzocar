@@ -500,16 +500,18 @@ class ApiService {
         if (!response.ok) throw new Error("Failed to send reminder SMS");
         return response.json();
     }
+    async getInboundEmails(category?: string, parseStatus?: string) {
+        const params = new URLSearchParams();
+        if (category) params.set("category", category);
+        if (parseStatus) params.set("parse_status", parseStatus);
+        const query = params.toString();
+        const response = await fetch(`${API_URL}/payments/inbox${query ? `?${query}` : ''}`, { headers: this.headers() });
+        if (!response.ok) throw new Error("Failed to fetch inbound emails");
+        return response.json();
+    }
+
+
 }
 
 export const api = new ApiService();
-    getInboundEmails: async (category?: string, parseStatus?: string) => {
-        const params = new URLSearchParams();
-        if (category) params.set('category', category);
-        if (parseStatus) params.set('parse_status', parseStatus);
-        const query = params.toString();
-        const response = await apiClient.get(`/payments/inbox${query ? `?${query}` : ''}`);
-        return response.data;
-    },
-
 export default api;
