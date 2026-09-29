@@ -84,11 +84,11 @@ class ZelleParser:
         try:
             # 1. Sender name
             # Pattern A: "<h1>NAME sent you money"
-            sender_match = re.search(r'<h1[^>]*>\s*([A-Za-z\s]+)\s+sent you money', body, re.IGNORECASE)
+            sender_match = re.search(r'<h1[^>]*>\s*([^<]+?)\s+sent you money', body, re.IGNORECASE)
             
             # Pattern B: "You received $X from NAME"
             if not sender_match:
-                sender_match = re.search(r'You received \$[\d,]+\.?\d* from ([A-Za-z\s]+)', body, re.IGNORECASE)
+                sender_match = re.search(r'You received \$[\d,]+\.?\d* from ([^<\n]+)', body, re.IGNORECASE)
                 
             sender_name = sender_match.group(1).strip().title() if sender_match else "Unknown"
             
