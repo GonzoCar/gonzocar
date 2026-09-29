@@ -34,6 +34,8 @@ export default function Payments() {
     const [stats, setStats] = useState<Stats | null>(null);
     const [loading, setLoading] = useState(true);
     const [assigningPaymentId, setAssigningPaymentId] = useState<string | null>(null);
+    const [search, setSearch] = useState('');
+    const [inboundEmails, setInboundEmails] = useState<any[]>([]);
 
     useEffect(() => {
         loadData();
@@ -41,14 +43,16 @@ export default function Payments() {
 
     async function loadData() {
         try {
-            const [paymentsData, driversData, statsData] = await Promise.all([
-                api.getAllPayments(0, 200),
+            const [paymentsData, driversData, statsData, inboundData] = await Promise.all([
+                api.getAllPayments(0, 2000),
                 api.getDrivers(),
                 api.getPaymentStats(),
+                api.getInboundEmails(),
             ]);
             setPayments(paymentsData);
             setDrivers(driversData);
             setStats(statsData);
+            setInboundEmails(inboundData);
         } catch (error) {
             console.error('Failed to load data:', error);
         } finally {
@@ -151,9 +155,10 @@ export default function Payments() {
                     padding: 'var(--space-3)',
                     borderBottom: '1px solid var(--light-gray)',
                 }}>
-                    <h3 style={{ fontFamily: 'var(--font-heading)', fontSize: '1rem', color: 'var(--dark-gray)' }}>
-                        All Payments
-                    </h3>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', gap: '12px', alignItems: 'center' }}>
+                        <h3 style={{ fontFamily: 'var(--font-heading)', fontSize: '1rem', color: 'var(--dark-gray)' }}>All Payments</h3>
+                        <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search sender, amount, memo, driver..." style={{ minWidth: '280px', padding: '8px 10px', border: '1px solid var(--medium-gray)', borderRadius: '6px' }} />
+                    </div>
                 </div>
 
                 {loading ? (
@@ -177,7 +182,7 @@ export default function Payments() {
                             </tr>
                         </thead>
                         <tbody>
-                            {payments.map((payment) => {
+                            {payments.filter((payment) => { const q = search.trim().toLowerCase(); if (!q) return true; const driver = payment.driver_id ? drivers.find((d) => d.id === payment.driver_id) : null; return [payment.sender_name, payment.source, payment.memo, payment.amount, driver ? `${driver.first_name} ${driver.last_name}` : ''].some((v) => String(v ?? '').toLowerCase().includes(q)); }).map((payment) => {
                                 const sourceStyle = sourceColors[payment.source] || sourceColors.zelle;
                                 const assignedDriver = payment.driver_id
                                     ? drivers.find((driver) => driver.id === payment.driver_id) || null
@@ -252,6 +257,32 @@ export default function Payments() {
                         </tbody>
                     </table>
                 )}
+            </div>
+            <div style={{ marginTop: 'var(--space-4)', background: 'var(--white)', borderRadius: 'var(--radius-standard)', boxShadow: '0 2px 8px rgba(0, 0, 0, 0.08)', overflow: 'hidden' }}>
+                <div style={{ padding: 'var(--space-3)', borderBottom: '1px solid var(--light-gray)' }}>
+                    <h3 style={{ fontFamily: 'var(--font-heading)', fontSize: '1rem', color: 'var(--dark-gray)' }}>Inbound Email Archive</h3>
+                    <div style={{ color: 'var(--dark-gray)', opacity: 0.7, fontSize: '0.8rem' }}>Every fetched Gmail message is retained, including unparsed payments and lead emails.</div>
+                </div>
+                <div style={{ maxHeight: '360px', overflow: 'auto' }}>
+                    <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                        <thead><tr style={{ background: 'var(--light-gray)' }}>
+                            <th style={{ padding: '8px 12px', textAlign: 'left' }}>Category</th>
+                            <th style={{ padding: '8px 12px', textAlign: 'left' }}>Status</th>
+                            <th style={{ padding: '8px 12px', textAlign: 'left' }}>Sender</th>
+                            <th style={{ padding: '8px 12px', textAlign: 'left' }}>Subject</th>
+                            <th style={{ padding: '8px 12px', textAlign: 'left' }}>Date</th>
+                        </tr></thead>
+                        <tbody>{inboundEmails.map((mail) => (
+                            <tr key={mail.id} style={{ borderTop: '1px solid var(--light-gray)' }}>
+                                <td style={{ padding: '8px 12px', fontWeight: 600 }}>{mail.category}</td>
+                                <td style={{ padding: '8px 12px' }}>{mail.parse_status}</td>
+                                <td style={{ padding: '8px 12px' }}>{mail.sender || '-'}</td>
+                                <td style={{ padding: '8px 12px' }}>{mail.subject || '-'}</td>
+                                <td style={{ padding: '8px 12px' }}>{mail.received_at ? new Date(mail.received_at).toLocaleString() : '-'}</td>
+                            </tr>
+                        ))}</tbody>
+                    </table>
+                </div>
             </div>
         </div>
     );
