@@ -43,16 +43,34 @@ export default function Payments() {
 
     async function loadData() {
         try {
-            const [paymentsData, driversData, statsData, inboundData] = await Promise.all([
+            // Do not let the optional inbox archive failure blank the Payments screen.
+            // Payments are the source-of-truth data and must render independently.
+            const [paymentsResult, driversResult, statsResult, inboundResult] = await Promise.allSettled([
                 api.getAllPayments(0, 2000),
                 api.getDrivers(),
                 api.getPaymentStats(),
                 api.getInboundEmails(),
             ]);
-            setPayments(paymentsData);
-            setDrivers(driversData);
-            setStats(statsData);
-            setInboundEmails(inboundData);
+            if (paymentsResult.status === 'fulfilled') {
+                setPayments(paymentsResult.value);
+            } else {
+                console.error('Failed to load payments:', paymentsResult.reason);
+            }
+            if (driversResult.status === 'fulfilled') {
+                setDrivers(driversResult.value);
+            } else {
+                console.error('Failed to load drivers:', driversResult.reason);
+            }
+            if (statsResult.status === 'fulfilled') {
+                setStats(statsResult.value);
+            } else {
+                console.error('Failed to load payment stats:', statsResult.reason);
+            }
+            if (inboundResult.status === 'fulfilled') {
+                setInboundEmails(inboundResult.value);
+            } else {
+                console.error('Failed to load inbound email archive:', inboundResult.reason);
+            }
         } catch (error) {
             console.error('Failed to load data:', error);
         } finally {
