@@ -30,7 +30,7 @@ def list_inbound_emails(
     current_user: Staff = Depends(get_current_user),
 ):
     """Show the durable Gmail archive so no fetched payment/lead email disappears."""
-    from app.models import InboundEmail
+    from app.models.models import InboundEmail
     query = db.query(InboundEmail)
     if category:
         query = query.filter(InboundEmail.category == category)
