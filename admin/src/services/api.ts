@@ -500,6 +500,24 @@ class ApiService {
         if (!response.ok) throw new Error("Failed to send reminder SMS");
         return response.json();
     }
+    async getInboundEmailMetrics() {
+        const response = await fetch(`${API_URL}/payments/inbox/metrics`, { headers: this.headers() });
+        if (!response.ok) throw await this.parseError(response, "Failed to fetch parser metrics");
+        return response.json();
+    }
+
+    async reprocessInboundEmail(inboundId: string, preferredSource?: string | null) {
+        const params = new URLSearchParams();
+        if (preferredSource) params.set("preferred_source", preferredSource);
+        const query = params.toString();
+        const response = await fetch(
+            `${API_URL}/payments/inbox/${inboundId}/reprocess${query ? `?${query}` : ""}`,
+            { method: "POST", headers: this.headers() }
+        );
+        if (!response.ok) throw await this.parseError(response, "Failed to reprocess inbound email");
+        return response.json();
+    }
+
     async getInboundEmails(category?: string, parseStatus?: string) {
         const params = new URLSearchParams();
         if (category) params.set("category", category);
