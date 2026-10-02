@@ -57,6 +57,7 @@ export default function Payments() {
     const [parserMetrics, setParserMetrics] = useState<ParserMetrics | null>(null);
     const [reprocessingId, setReprocessingId] = useState<string | null>(null);
     const [reprocessSource, setReprocessSource] = useState<Record<string, string>>({});
+    const [originalEmail, setOriginalEmail] = useState<{ id: string; subject: string | null; raw_email: string } | null>(null);
 
     useEffect(() => {
         loadData();
@@ -102,6 +103,15 @@ export default function Payments() {
             console.error('Failed to load data:', error);
         } finally {
             setLoading(false);
+        }
+    }
+
+    async function handleViewOriginal(id: string) {
+        try {
+            const result = await api.getInboundEmail(id);
+            setOriginalEmail({ id: result.id, subject: result.subject, raw_email: result.raw_email });
+        } catch (error) {
+            console.error('Failed to load original email:', error);
         }
     }
 
@@ -239,6 +249,9 @@ export default function Payments() {
                                         <option value="chime">Chime</option>
                                         <option value="stripe">Stripe</option>
                                     </select>
+                                    <button type="button" onClick={() => handleViewOriginal(mail.id)} style={{ padding: '6px 10px', border: '1px solid var(--medium-gray)', borderRadius: '6px', background: 'white', color: 'var(--dark-gray)', fontWeight: 700, cursor: 'pointer' }}>
+                                        Original
+                                    </button>
                                     <button type="button" onClick={() => handleReprocess(mail.id)} disabled={reprocessingId === mail.id} style={{ padding: '6px 10px', border: 0, borderRadius: '6px', background: 'var(--primary-blue)', color: 'white', fontWeight: 700, cursor: 'pointer' }}>
                                         {reprocessingId === mail.id ? 'Retrying...' : 'Reprocess'}
                                     </button>
@@ -389,6 +402,18 @@ export default function Payments() {
                     </table>
                 </div>
             </div>
+        {originalEmail && (
+            <div onClick={() => setOriginalEmail(null)} style={{ position: 'fixed', inset: 0, background: 'rgba(15, 23, 42, 0.55)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '24px' }}>
+                <div onClick={(event) => event.stopPropagation()} style={{ width: 'min(1100px, 96vw)', height: 'min(760px, 90vh)', background: 'white', borderRadius: '14px', overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
+                    <div style={{ padding: '12px 16px', borderBottom: '1px solid var(--light-gray)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <strong>Original email: {originalEmail.subject || 'No subject'}</strong>
+                        <button type="button" onClick={() => setOriginalEmail(null)} style={{ border: 0, background: 'transparent', fontSize: '1.2rem', cursor: 'pointer' }}>×</button>
+                    </div>
+                    <pre style={{ margin: 0, padding: '16px', overflow: 'auto', whiteSpace: 'pre-wrap', wordBreak: 'break-word', fontSize: '0.72rem', lineHeight: 1.45, flex: 1 }}>{originalEmail.raw_email}</pre>
+                </div>
+            </div>
+        )}
+
         </div>
     );
 }
