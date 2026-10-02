@@ -49,28 +49,32 @@ from app.services.billing import (
 # BILLING_SMS_DISABLED=true  -> debits/balances still run, but no SMS is sent.
 # MAX_CONSECUTIVE_REMINDERS  -> stop repeat-texting a driver after this many
 #                               reminder days with no payment credited in between.
-# AUTOMATIC_OVERDUE_REMINDERS=false -> disable all automated overdue SMS reminders.
 BILLING_SMS_DISABLED = os.getenv("BILLING_SMS_DISABLED", "false").strip().lower() in {"1", "true", "yes"}
 MAX_CONSECUTIVE_REMINDERS = int(os.getenv("MAX_CONSECUTIVE_REMINDERS", "3"))
-AUTOMATIC_OVERDUE_REMINDERS = os.getenv("AUTOMATIC_OVERDUE_REMINDERS", "false").strip().lower() in {"1", "true", "yes"}
 
 
-def reminder_mode_is_automatic() -> bool:
-    """Return True when automatic overdue reminders are enabled."""
+def reminder_mode_is_automatic(db: Session | None = None) -> bool:
+    """Return True only when the persisted admin setting explicitly enables automation.
+
+    The database setting is the single source of truth. Environment variables do not
+    override it, preventing Railway configuration from silently re-enabling reminders.
+    Missing/invalid settings fail closed to manual mode.
+    """
     if BILLING_SMS_DISABLED:
         return False
 
-    if os.getenv("AUTOMATIC_OVERDUE_REMINDERS") is not None:
-        return os.getenv("AUTOMATIC_OVERDUE_REMINDERS", "false").strip().lower() in {"1", "true", "yes"}
-
+    should_close = db is None
+    session = db or get_db()
     try:
-        with get_db() as db:
-            value = db.execute(text("SELECT value FROM system_settings WHERE key = 'reminder_mode' LIMIT 1")).scalar()
-            if value is None:
-                return False
-            return str(value).strip().lower() == "automatic"
+        value = session.execute(
+            text("SELECT value FROM system_settings WHERE key = 'reminder_mode' LIMIT 1")
+        ).scalar()
+        return str(value).strip().lower() == "automatic" if value is not None else False
     except Exception:
-        return AUTOMATIC_OVERDUE_REMINDERS
+        return False
+    finally:
+        if should_close:
+            session.close()
 
 
 def get_db() -> Session:
@@ -325,7 +329,7 @@ def has_hit_reminder_cap(db: Session, driver: Driver) -> bool:
 
 def should_send_late_payment_sms(db: Session, driver: Driver, balance: Decimal, days_late: int) -> bool:
     """Return False when no reminder SMS should be sent for this driver."""
-    if BILLING_SMS_DISABLED or not reminder_mode_is_automatic():
+    if BILLING_SMS_DISABLED or not reminder_mode_is_automatic(db):
         return False
 
     if balance >= 0:
