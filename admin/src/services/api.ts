@@ -506,6 +506,12 @@ class ApiService {
         return response.json();
     }
 
+    async getInboundEmail(inboundId: string) {
+        const response = await fetch(`${API_URL}/payments/inbox/${inboundId}`, { headers: this.headers() });
+        if (!response.ok) throw await this.parseError(response, "Failed to fetch inbound email");
+        return response.json();
+    }
+
     async reprocessInboundEmail(inboundId: string, preferredSource?: string | null) {
         const params = new URLSearchParams();
         if (preferredSource) params.set("preferred_source", preferredSource);
