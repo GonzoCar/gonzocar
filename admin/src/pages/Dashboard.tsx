@@ -60,10 +60,33 @@ interface SystemStatusItem {
     message: string;
 }
 
+interface ParserRunCounts {
+    found: number;
+    new: number;
+    matched: number;
+    unmatched: number;
+    duplicate: number;
+    unparsed: number;
+    ignored: number;
+    failed: number;
+}
+
+interface ParserHealth extends SystemStatusItem {
+    last_run_at?: string | null;
+    last_success_at?: string | null;
+    total_runs?: number;
+    failed_runs?: number;
+    total_missed_windows?: number;
+    currently_late?: boolean;
+    current_delay_minutes?: number;
+    last_run_counts?: ParserRunCounts;
+}
+
 interface SystemStatus {
     database: SystemStatusItem;
     gmail: SystemStatusItem;
     openphone: SystemStatusItem;
+    payment_parser?: ParserHealth;
 }
 
 const DEFAULT_COUNTS: Record<string, number> = {
@@ -1085,12 +1108,52 @@ export default function Dashboard() {
                 </Panel>
             </section>
 
+            {systemStatus?.payment_parser && (
+                <Panel
+                    title="Payment Parser"
+                    subtitle="Latest Gmail ingestion run and parser outcome breakdown"
+                    action={<Link to="/payments" style={{ fontSize: "0.8rem", color: "var(--primary-blue)", textDecoration: "none", fontWeight: 700 }}>Open Inbox</Link>}
+                >
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: "12px", marginBottom: "12px" }}>
+                        <div>
+                            <div style={{ fontSize: "0.78rem", color: "#6D7D95" }}>
+                                Last run {systemStatus.payment_parser.last_run_at ? new Date(systemStatus.payment_parser.last_run_at).toLocaleString() : "—"}
+                            </div>
+                            <div style={{ fontSize: "0.78rem", color: "#6D7D95", marginTop: "3px" }}>
+                                {systemStatus.payment_parser.message}
+                            </div>
+                        </div>
+                        <StatusPill item={systemStatus.payment_parser} />
+                    </div>
+                    <div style={{ display: "grid", gridTemplateColumns: "repeat(4, minmax(0, 1fr))", gap: "8px" }}>
+                        {[
+                            ["Fetched", systemStatus.payment_parser.last_run_counts?.found || 0],
+                            ["Matched", systemStatus.payment_parser.last_run_counts?.matched || 0],
+                            ["Unmatched", systemStatus.payment_parser.last_run_counts?.unmatched || 0],
+                            ["Unparsed", systemStatus.payment_parser.last_run_counts?.unparsed || 0],
+                        ].map(([label, value]) => (
+                            <div key={String(label)} style={{ border: "1px solid #E4EAF3", borderRadius: "10px", padding: "9px", background: "#FAFCFF" }}>
+                                <div style={{ fontSize: "0.68rem", color: "#6D7D95", textTransform: "uppercase" }}>{label}</div>
+                                <div style={{ ...METRIC_VALUE_STYLE, marginTop: "3px", fontSize: "1.1rem", color: String(label) === "Unparsed" && Number(value) > 0 ? "#A42C36" : "#2A3648" }}>{value}</div>
+                            </div>
+                        ))}
+                    </div>
+                    <div style={{ marginTop: "10px", display: "flex", flexWrap: "wrap", gap: "12px", fontSize: "0.72rem", color: "#718199" }}>
+                        <span>Duplicates {systemStatus.payment_parser.last_run_counts?.duplicate || 0}</span>
+                        <span>Ignored {systemStatus.payment_parser.last_run_counts?.ignored || 0}</span>
+                        <span>Failed {systemStatus.payment_parser.last_run_counts?.failed || 0}</span>
+                        <span>Missed windows {systemStatus.payment_parser.total_missed_windows || 0}</span>
+                    </div>
+                </Panel>
+            )}
+
             <Panel title="System Status" subtitle="Current health of external integrations and database">
                 <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: "8px" }}>
                     {[
                         { label: "Database", item: systemStatus?.database },
                         { label: "Gmail", item: systemStatus?.gmail },
                         { label: "OpenPhone", item: systemStatus?.openphone },
+                        { label: "Payment Parser", item: systemStatus?.payment_parser },
                     ].map(({ label, item }) => (
                         <div key={label} style={{ border: "1px solid #E4EAF3", borderRadius: "12px", padding: "10px", background: "#FAFCFF" }}>
                             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "4px" }}>
