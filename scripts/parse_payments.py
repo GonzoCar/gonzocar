@@ -22,7 +22,7 @@ from sqlalchemy import func
 from sqlalchemy.orm import Session
 from app.core.database import SessionLocal
 from app.models.models import PaymentRaw, Alias, Ledger, Driver, InboundEmail
-from app.services.gmail_parser import parse_email, ParsedPayment
+from app.services.gmail_parser import parse_email_diagnostic, ParsedPayment
 
 
 def get_db() -> Session:
@@ -106,25 +106,42 @@ def archive_inbound_email(db: Session, raw_email: bytes, gmail_id: str) -> Inbou
     db.flush()
     return record
 
-def classify_inbound(record: InboundEmail, payment: ParsedPayment | None) -> str:
-    if payment:
+def classify_inbound(record: InboundEmail, payment: ParsedPayment | None, diagnostics: dict | None = None) -> str:
+    if payment or (diagnostics or {}).get("payment_candidate"):
         return 'payment'
     haystack = f"{record.subject or ''} {record.sender or ''}".lower()
     lead_terms = ('lead', 'application', 'applicant', 'inquiry', 'quote request', 'new customer', 'new driver', 'contact form')
     return 'lead' if any(term in haystack for term in lead_terms) else 'other'
 
-def process_email(db: Session, raw_email: bytes, gmail_id: str = None) -> tuple[bool, str]:
+
+def process_email(
+    db: Session,
+    raw_email: bytes,
+    gmail_id: str = None,
+    preferred_source: str | None = None,
+) -> tuple[bool, str]:
     archive = archive_inbound_email(db, raw_email, gmail_id or str(uuid4()))
-    payment = parse_email(raw_email)
-    archive.category = classify_inbound(archive, payment)
+    payment, diagnostics = parse_email_diagnostic(raw_email, preferred_source=preferred_source)
+
+    archive.category = classify_inbound(archive, payment, diagnostics)
+    archive.detected_source = diagnostics.get("detected_source")
+    archive.parser_attempts = int(archive.parser_attempts or 0) + 1
+    archive.last_parsed_at = datetime.utcnow()
+
     if not payment:
-        archive.parse_status = "unparsed"
-        return False, "unparsed"
+        archive.parse_status = "unparsed" if diagnostics.get("payment_candidate") else "ignored"
+        archive.error_message = diagnostics.get("failure_reason")
+        return False, archive.parse_status
+
     result = store_payment(db, payment, gmail_id)
     if result is None:
         archive.parse_status = "duplicate"
+        archive.error_message = None
         return False, "duplicate"
+
     archive.parse_status = "parsed"
+    archive.error_message = None
+    archive.detected_source = payment.source
     if result.matched:
         return True, "matched"
     return True, "unmatched"
