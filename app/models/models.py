@@ -211,6 +211,14 @@ class PaymentParserRun(Base):
     lookback_hours = Column(Integer, nullable=True)
     max_results = Column(Integer, nullable=True)
     trigger_source = Column(String(50), nullable=False, default="railway-cron")
+    found_count = Column(Integer, nullable=False, default=0)
+    new_count = Column(Integer, nullable=False, default=0)
+    matched_count = Column(Integer, nullable=False, default=0)
+    unmatched_count = Column(Integer, nullable=False, default=0)
+    duplicate_count = Column(Integer, nullable=False, default=0)
+    unparsed_count = Column(Integer, nullable=False, default=0)
+    ignored_count = Column(Integer, nullable=False, default=0)
+    failed_count = Column(Integer, nullable=False, default=0)
     error_message = Column(Text, nullable=True)
 
 
