@@ -462,8 +462,11 @@ class GenericPaymentParser:
 
             patterns = [
                 r'(?P<name>[^|<>]{2,80}?)\s+(?:sent|paid) you\s+\$?(?P<amount>[\d,]+(?:\.\d{1,2})?)',
-                r'(?:you received|payment received|received)\s+\$?(?P<amount>[\d,]+(?:\.\d{1,2})?)\s+(?:from|by)\s+(?P<name>[^|<>]{2,80}?)(?:\s+for\s+|$)',
-                r'(?P<name>[^|<>]{2,80}?)\s+(?:just )?sent you money[^$]{0,80}\$?(?P<amount>[\d,]+(?:\.\d{1,2})?)',
+                r'(?:you received|payment received|received)\s+(?:a payment of\s+)?\$?(?P<amount>[\d,]+(?:\.\d{1,2})?)\s+(?:from|by)\s+(?P<name>[^|<>]{2,80}?)(?:\s+for\s+|\s+(?:on|via)\s+|$)',
+                r'(?P<name>[^|<>]{2,80}?)\s+(?:just )?sent you money[^$]{0,120}\$?(?P<amount>[\d,]+(?:\.\d{1,2})?)',
+                r'(?:payment|transfer)\s+(?:of\s+)?\$?(?P<amount>[\d,]+(?:\.\d{1,2})?)\s+(?:from|by)\s+(?P<name>[^|<>]{2,80}?)(?:\s+(?:for|on|via)\s+|$)',
+                r'(?P<name>[^|<>]{2,80}?)\s+(?:has\s+)?sent\s+you\s+\$?(?P<amount>[\d,]+(?:\.\d{1,2})?)',
+                r'(?P<name>[^|<>]{2,80}?)\s+paid\s+you\s+(?P<amount>[\d,]+(?:\.\d{1,2})?)\s*(?:USD|dollars)?',
             ]
             match = next((re.search(p, combined, re.IGNORECASE) for p in patterns if re.search(p, combined, re.IGNORECASE)), None)
             if not match:
