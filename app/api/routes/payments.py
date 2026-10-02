@@ -14,11 +14,121 @@ from sqlalchemy.orm import Session
 from sqlalchemy import func
 
 from app.api.deps import get_db, get_current_user
-from app.models import Staff, PaymentRaw, Driver, Alias, Ledger, AliasType
+from app.models import Staff, PaymentRaw, Driver, Alias, Ledger, AliasType, InboundEmail, StaffActivity
 from app.schemas import PaymentResponse, PaymentAssign
 
 router = APIRouter(prefix="/payments", tags=["payments"])
 
+
+
+
+@router.get("/inbox/metrics")
+def inbound_email_metrics(
+    db: Session = Depends(get_db),
+    current_user: Staff = Depends(get_current_user),
+):
+    """Operational metrics for the Gmail ingestion archive."""
+    total = db.query(InboundEmail).count()
+    status_rows = (
+        db.query(InboundEmail.parse_status, func.count(InboundEmail.id))
+        .group_by(InboundEmail.parse_status)
+        .all()
+    )
+    category_rows = (
+        db.query(InboundEmail.category, func.count(InboundEmail.id))
+        .group_by(InboundEmail.category)
+        .all()
+    )
+    source_rows = (
+        db.query(InboundEmail.detected_source, func.count(InboundEmail.id))
+        .filter(InboundEmail.detected_source.isnot(None))
+        .group_by(InboundEmail.detected_source)
+        .all()
+    )
+    unparsed = (
+        db.query(InboundEmail)
+        .filter(InboundEmail.parse_status == "unparsed")
+        .order_by(InboundEmail.received_at.desc())
+        .limit(25)
+        .all()
+    )
+    return {
+        "total": total,
+        "by_status": {str(key or "unknown"): int(value) for key, value in status_rows},
+        "by_category": {str(key or "unknown"): int(value) for key, value in category_rows},
+        "by_source": {str(key or "unknown"): int(value) for key, value in source_rows},
+        "unparsed_count": len(unparsed),
+        "unparsed": [
+            {
+                "id": str(row.id),
+                "gmail_id": row.gmail_id,
+                "sender": row.sender,
+                "subject": row.subject,
+                "received_at": row.received_at.isoformat() if row.received_at else None,
+                "detected_source": row.detected_source,
+                "error_message": row.error_message,
+                "parser_attempts": row.parser_attempts,
+            }
+            for row in unparsed
+        ],
+    }
+
+
+@router.post("/inbox/{inbound_id}/reprocess")
+def reprocess_inbound_email(
+    inbound_id: UUID,
+    preferred_source: str | None = None,
+    db: Session = Depends(get_db),
+    current_user: Staff = Depends(get_current_user),
+):
+    """Re-run one archived email through the parser without refetching Gmail."""
+    allowed_sources = {"zelle", "cashapp", "venmo", "chime", "stripe"}
+    if preferred_source and preferred_source.strip().lower() not in allowed_sources:
+        raise HTTPException(status_code=400, detail="Unsupported parser source")
+
+    row = db.query(InboundEmail).filter(InboundEmail.id == inbound_id).first()
+    if not row:
+        raise HTTPException(status_code=404, detail="Inbound email not found")
+
+    from scripts.parse_payments import process_email
+
+    try:
+        created, outcome = process_email(
+            db,
+            row.raw_email,
+            row.gmail_id,
+            preferred_source=(preferred_source or None),
+        )
+        db.commit()
+        db.refresh(row)
+
+        activity = StaffActivity(
+            staff_id=current_user.id,
+            event_type="payment_email_reprocessed",
+            activity_metadata={
+                "inbound_email_id": str(row.id),
+                "gmail_id": row.gmail_id,
+                "preferred_source": preferred_source,
+                "outcome": outcome,
+            },
+        )
+        db.add(activity)
+        db.commit()
+
+        return {
+            "id": str(row.id),
+            "gmail_id": row.gmail_id,
+            "parse_status": row.parse_status,
+            "category": row.category,
+            "detected_source": row.detected_source,
+            "error_message": row.error_message,
+            "parser_attempts": row.parser_attempts,
+            "created_payment": created,
+            "outcome": outcome,
+        }
+    except Exception as exc:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=f"Reprocess failed: {type(exc).__name__}") from exc
 
 @router.get("/inbox")
 def list_inbound_emails(
