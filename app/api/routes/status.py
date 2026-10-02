@@ -12,7 +12,7 @@ import httpx
 
 from app.api.deps import get_db, get_current_user
 from app.core.config import get_settings
-from app.models import BillingCronRun, PaymentParserRun, Staff, SystemSetting
+from app.models import BillingCronRun, PaymentParserRun, InboundEmail, Staff, SystemSetting
 from app.services.gmail_service import GmailService
 from scripts.parse_payments import (
     compute_backfill_hours,
@@ -157,6 +157,25 @@ def run_payment_parser(
         success = run_with_gmail(hours=hours, max_results=max_results)
         parser_run.finished_at = datetime.utcnow()
 
+        # Reconstruct this run's outcome counts from the durable inbox archive.
+        run_rows = (
+            db.query(InboundEmail)
+            .filter(InboundEmail.last_parsed_at.isnot(None))
+            .filter(InboundEmail.last_parsed_at >= started_at)
+            .all()
+        )
+        parser_run.found_count = len(run_rows)
+        parser_run.matched_count = sum(1 for row in run_rows if row.parse_status == "parsed")
+        parser_run.unmatched_count = 0
+        parser_run.duplicate_count = sum(1 for row in run_rows if row.parse_status == "duplicate")
+        parser_run.unparsed_count = sum(1 for row in run_rows if row.parse_status == "unparsed")
+        parser_run.ignored_count = sum(1 for row in run_rows if row.parse_status == "ignored")
+        parser_run.failed_count = 0
+        parser_run.new_count = sum(
+            1 for row in run_rows
+            if row.parse_status == "parsed"
+        )
+
         if not success:
             parser_run.success = False
             parser_run.error_message = "Payment parser run failed"
@@ -182,6 +201,16 @@ def run_payment_parser(
         "lookback_hours": hours,
         "max_results": max_results,
         "last_inbound_received_at": last_inbound_received_at.isoformat() if last_inbound_received_at else None,
+        "counts": {
+            "found": parser_run.found_count,
+            "new": parser_run.new_count,
+            "matched": parser_run.matched_count,
+            "unmatched": parser_run.unmatched_count,
+            "duplicate": parser_run.duplicate_count,
+            "unparsed": parser_run.unparsed_count,
+            "ignored": parser_run.ignored_count,
+            "failed": parser_run.failed_count,
+        },
     }
 
 
