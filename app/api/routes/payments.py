@@ -74,6 +74,32 @@ def inbound_email_metrics(
     }
 
 
+@router.get("/inbox/{inbound_id}")
+def get_inbound_email(
+    inbound_id: UUID,
+    db: Session = Depends(get_db),
+    current_user: Staff = Depends(get_current_user),
+):
+    """Return one archived email, including its original RFC message."""
+    row = db.query(InboundEmail).filter(InboundEmail.id == inbound_id).first()
+    if not row:
+        raise HTTPException(status_code=404, detail="Inbound email not found")
+    return {
+        "id": str(row.id),
+        "gmail_id": row.gmail_id,
+        "sender": row.sender,
+        "recipients": row.recipients,
+        "subject": row.subject,
+        "received_at": row.received_at.isoformat() if row.received_at else None,
+        "category": row.category,
+        "parse_status": row.parse_status,
+        "detected_source": row.detected_source,
+        "error_message": row.error_message,
+        "parser_attempts": row.parser_attempts,
+        "raw_email": row.raw_email.decode("utf-8", errors="replace"),
+    }
+
+
 @router.post("/inbox/{inbound_id}/reprocess")
 def reprocess_inbound_email(
     inbound_id: UUID,
