@@ -12,7 +12,7 @@ import httpx
 
 from app.api.deps import get_db, get_current_user
 from app.core.config import get_settings
-from app.models import BillingCronRun, PaymentParserRun, InboundEmail, Staff, SystemSetting
+from app.models import BillingCronRun, PaymentParserRun, InboundEmail, PaymentRaw, Staff, SystemSetting
 from app.services.gmail_service import GmailService
 from scripts.parse_payments import (
     compute_backfill_hours,
@@ -165,8 +165,24 @@ def run_payment_parser(
             .all()
         )
         parser_run.found_count = len(run_rows)
-        parser_run.matched_count = sum(1 for row in run_rows if row.parse_status == "parsed")
+        parsed_rows = [row for row in run_rows if row.parse_status == "parsed"]
+        parser_run.matched_count = 0
         parser_run.unmatched_count = 0
+        if parsed_rows:
+            gmail_ids = [row.gmail_id for row in parsed_rows]
+            matched_payment_count = (
+                db.query(PaymentRaw)
+                .filter(PaymentRaw.gmail_id.in_(gmail_ids))
+                .filter(PaymentRaw.matched == True)
+                .count()
+            )
+            payment_count = (
+                db.query(PaymentRaw)
+                .filter(PaymentRaw.gmail_id.in_(gmail_ids))
+                .count()
+            )
+            parser_run.matched_count = matched_payment_count
+            parser_run.unmatched_count = max(0, payment_count - matched_payment_count)
         parser_run.duplicate_count = sum(1 for row in run_rows if row.parse_status == "duplicate")
         parser_run.unparsed_count = sum(1 for row in run_rows if row.parse_status == "unparsed")
         parser_run.ignored_count = sum(1 for row in run_rows if row.parse_status == "ignored")
