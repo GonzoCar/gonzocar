@@ -28,6 +28,24 @@ interface Stats {
     matched_amount: number;
 }
 
+interface ParserMetrics {
+    total: number;
+    by_status: Record<string, number>;
+    by_category: Record<string, number>;
+    by_source: Record<string, number>;
+    unparsed_count: number;
+    unparsed: Array<{
+        id: string;
+        gmail_id: string;
+        sender: string | null;
+        subject: string | null;
+        received_at: string | null;
+        detected_source: string | null;
+        error_message: string | null;
+        parser_attempts: number;
+    }>;
+}
+
 export default function Payments() {
     const [payments, setPayments] = useState<Payment[]>([]);
     const [drivers, setDrivers] = useState<Driver[]>([]);
@@ -36,6 +54,10 @@ export default function Payments() {
     const [assigningPaymentId, setAssigningPaymentId] = useState<string | null>(null);
     const [search, setSearch] = useState('');
     const [inboundEmails, setInboundEmails] = useState<any[]>([]);
+    const [parserMetrics, setParserMetrics] = useState<ParserMetrics | null>(null);
+    const [reprocessingId, setReprocessingId] = useState<string | null>(null);
+    const [reprocessSource, setReprocessSource] = useState<Record<string, string>>({});
+    const [originalEmail, setOriginalEmail] = useState<{ id: string; subject: string | null; raw_email: string } | null>(null);
 
     useEffect(() => {
         loadData();
@@ -45,11 +67,12 @@ export default function Payments() {
         try {
             // Do not let the optional inbox archive failure blank the Payments screen.
             // Payments are the source-of-truth data and must render independently.
-            const [paymentsResult, driversResult, statsResult, inboundResult] = await Promise.allSettled([
+            const [paymentsResult, driversResult, statsResult, inboundResult, metricsResult] = await Promise.allSettled([
                 api.getAllPayments(0, 2000),
                 api.getDrivers(),
                 api.getPaymentStats(),
                 api.getInboundEmails(),
+                api.getInboundEmailMetrics(),
             ]);
             if (paymentsResult.status === 'fulfilled') {
                 setPayments(paymentsResult.value);
@@ -71,10 +94,36 @@ export default function Payments() {
             } else {
                 console.error('Failed to load inbound email archive:', inboundResult.reason);
             }
+            if (metricsResult.status === 'fulfilled') {
+                setParserMetrics(metricsResult.value as ParserMetrics);
+            } else {
+                console.error('Failed to load parser metrics:', metricsResult.reason);
+            }
         } catch (error) {
             console.error('Failed to load data:', error);
         } finally {
             setLoading(false);
+        }
+    }
+
+    async function handleViewOriginal(id: string) {
+        try {
+            const result = await api.getInboundEmail(id);
+            setOriginalEmail({ id: result.id, subject: result.subject, raw_email: result.raw_email });
+        } catch (error) {
+            console.error('Failed to load original email:', error);
+        }
+    }
+
+    async function handleReprocess(id: string) {
+        try {
+            setReprocessingId(id);
+            await api.reprocessInboundEmail(id, reprocessSource[id] || null);
+            await loadData();
+        } catch (error) {
+            console.error('Failed to reprocess inbound email:', error);
+        } finally {
+            setReprocessingId(null);
         }
     }
 
@@ -161,6 +210,57 @@ export default function Payments() {
                     </div>
                 </div>
             </div>
+
+
+            <div style={{ marginBottom: 'var(--space-4)', display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 'var(--space-2)' }}>
+                {[
+                    ['Fetched', parserMetrics ? Object.values(parserMetrics.by_status || {}).reduce((a, b) => a + b, 0) : 0],
+                    ['Parsed', parserMetrics?.by_status?.parsed || 0],
+                    ['Unparsed', parserMetrics?.by_status?.unparsed || 0],
+                    ['Ignored', parserMetrics?.by_status?.ignored || 0],
+                ].map(([label, value]) => (
+                    <div key={String(label)} style={{ padding: '12px', border: '1px solid var(--light-gray)', borderRadius: '10px', background: 'var(--white)' }}>
+                        <div style={{ fontSize: '0.72rem', opacity: 0.65, textTransform: 'uppercase' }}>{label}</div>
+                        <div style={{ fontSize: '1.3rem', fontWeight: 700, marginTop: '3px' }}>{value}</div>
+                    </div>
+                ))}
+            </div>
+
+            {parserMetrics && parserMetrics.unparsed.length > 0 && (
+                <div style={{ marginBottom: 'var(--space-4)', background: 'var(--white)', borderRadius: 'var(--radius-standard)', boxShadow: '0 2px 8px rgba(0, 0, 0, 0.08)', overflow: 'hidden' }}>
+                    <div style={{ padding: 'var(--space-3)', borderBottom: '1px solid var(--light-gray)' }}>
+                        <h3 style={{ fontFamily: 'var(--font-heading)', fontSize: '1rem', color: 'var(--dark-gray)' }}>Unparsed Payment Inbox ({parserMetrics.unparsed_count})</h3>
+                        <div style={{ color: 'var(--dark-gray)', opacity: 0.7, fontSize: '0.8rem' }}>Review payment-like emails that did not match a parser. Choose a source to retry with that parser.</div>
+                    </div>
+                    <div style={{ maxHeight: '420px', overflow: 'auto' }}>
+                        {parserMetrics.unparsed.map((mail) => (
+                            <div key={mail.id} style={{ padding: '12px', borderTop: '1px solid var(--light-gray)', display: 'grid', gridTemplateColumns: '1fr auto', gap: '12px', alignItems: 'center' }}>
+                                <div style={{ minWidth: 0 }}>
+                                    <div style={{ fontWeight: 700, color: 'var(--dark-gray)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{mail.subject || 'No subject'}</div>
+                                    <div style={{ fontSize: '0.78rem', opacity: 0.72, marginTop: '3px' }}>{mail.sender || 'Unknown sender'}{mail.detected_source ? ' • detected ' + mail.detected_source : ''} • attempts {mail.parser_attempts}</div>
+                                    <div style={{ fontSize: '0.75rem', color: '#A42C36', marginTop: '3px' }}>{mail.error_message || 'No parser match'}</div>
+                                </div>
+                                <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
+                                    <select value={reprocessSource[mail.id] || ''} onChange={(e) => setReprocessSource((current) => ({ ...current, [mail.id]: e.target.value }))} style={{ padding: '6px 8px', border: '1px solid var(--medium-gray)', borderRadius: '6px' }}>
+                                        <option value="">Auto detect</option>
+                                        <option value="zelle">Zelle</option>
+                                        <option value="cashapp">Cash App</option>
+                                        <option value="venmo">Venmo</option>
+                                        <option value="chime">Chime</option>
+                                        <option value="stripe">Stripe</option>
+                                    </select>
+                                    <button type="button" onClick={() => handleViewOriginal(mail.id)} style={{ padding: '6px 10px', border: '1px solid var(--medium-gray)', borderRadius: '6px', background: 'white', color: 'var(--dark-gray)', fontWeight: 700, cursor: 'pointer' }}>
+                                        Original
+                                    </button>
+                                    <button type="button" onClick={() => handleReprocess(mail.id)} disabled={reprocessingId === mail.id} style={{ padding: '6px 10px', border: 0, borderRadius: '6px', background: 'var(--primary-blue)', color: 'white', fontWeight: 700, cursor: 'pointer' }}>
+                                        {reprocessingId === mail.id ? 'Retrying...' : 'Reprocess'}
+                                    </button>
+                                </div>
+                            </div>
+                        ))}
+                    </div>
+                </div>
+            )}
 
             {/* Table Card */}
             <div style={{
@@ -302,6 +402,18 @@ export default function Payments() {
                     </table>
                 </div>
             </div>
+        {originalEmail && (
+            <div onClick={() => setOriginalEmail(null)} style={{ position: 'fixed', inset: 0, background: 'rgba(15, 23, 42, 0.55)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '24px' }}>
+                <div onClick={(event) => event.stopPropagation()} style={{ width: 'min(1100px, 96vw)', height: 'min(760px, 90vh)', background: 'white', borderRadius: '14px', overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
+                    <div style={{ padding: '12px 16px', borderBottom: '1px solid var(--light-gray)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <strong>Original email: {originalEmail.subject || 'No subject'}</strong>
+                        <button type="button" onClick={() => setOriginalEmail(null)} style={{ border: 0, background: 'transparent', fontSize: '1.2rem', cursor: 'pointer' }}>×</button>
+                    </div>
+                    <pre style={{ margin: 0, padding: '16px', overflow: 'auto', whiteSpace: 'pre-wrap', wordBreak: 'break-word', fontSize: '0.72rem', lineHeight: 1.45, flex: 1 }}>{originalEmail.raw_email}</pre>
+                </div>
+            </div>
+        )}
+
         </div>
     );
 }

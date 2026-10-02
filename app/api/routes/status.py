@@ -12,7 +12,7 @@ import httpx
 
 from app.api.deps import get_db, get_current_user
 from app.core.config import get_settings
-from app.models import BillingCronRun, PaymentParserRun, Staff, SystemSetting
+from app.models import BillingCronRun, PaymentParserRun, InboundEmail, PaymentRaw, Staff, SystemSetting
 from app.services.gmail_service import GmailService
 from scripts.parse_payments import (
     compute_backfill_hours,
@@ -157,6 +157,41 @@ def run_payment_parser(
         success = run_with_gmail(hours=hours, max_results=max_results)
         parser_run.finished_at = datetime.utcnow()
 
+        # Reconstruct this run's outcome counts from the durable inbox archive.
+        run_rows = (
+            db.query(InboundEmail)
+            .filter(InboundEmail.last_parsed_at.isnot(None))
+            .filter(InboundEmail.last_parsed_at >= started_at)
+            .all()
+        )
+        parser_run.found_count = len(run_rows)
+        parsed_rows = [row for row in run_rows if row.parse_status == "parsed"]
+        parser_run.matched_count = 0
+        parser_run.unmatched_count = 0
+        if parsed_rows:
+            gmail_ids = [row.gmail_id for row in parsed_rows]
+            matched_payment_count = (
+                db.query(PaymentRaw)
+                .filter(PaymentRaw.gmail_id.in_(gmail_ids))
+                .filter(PaymentRaw.matched == True)
+                .count()
+            )
+            payment_count = (
+                db.query(PaymentRaw)
+                .filter(PaymentRaw.gmail_id.in_(gmail_ids))
+                .count()
+            )
+            parser_run.matched_count = matched_payment_count
+            parser_run.unmatched_count = max(0, payment_count - matched_payment_count)
+        parser_run.duplicate_count = sum(1 for row in run_rows if row.parse_status == "duplicate")
+        parser_run.unparsed_count = sum(1 for row in run_rows if row.parse_status == "unparsed")
+        parser_run.ignored_count = sum(1 for row in run_rows if row.parse_status == "ignored")
+        parser_run.failed_count = 0
+        parser_run.new_count = sum(
+            1 for row in run_rows
+            if row.parse_status == "parsed"
+        )
+
         if not success:
             parser_run.success = False
             parser_run.error_message = "Payment parser run failed"
@@ -182,6 +217,16 @@ def run_payment_parser(
         "lookback_hours": hours,
         "max_results": max_results,
         "last_inbound_received_at": last_inbound_received_at.isoformat() if last_inbound_received_at else None,
+        "counts": {
+            "found": parser_run.found_count,
+            "new": parser_run.new_count,
+            "matched": parser_run.matched_count,
+            "unmatched": parser_run.unmatched_count,
+            "duplicate": parser_run.duplicate_count,
+            "unparsed": parser_run.unparsed_count,
+            "ignored": parser_run.ignored_count,
+            "failed": parser_run.failed_count,
+        },
     }
 
 
@@ -466,6 +511,16 @@ def check_payment_parser_health(db: Session) -> dict:
         "last_run_at": last_run.triggered_at.isoformat() if last_run else None,
         "last_success_at": last_success.triggered_at.isoformat() if last_success else None,
         "last_error": last_run.error_message if last_run and not last_run.success else None,
+        "last_run_counts": {
+            "found": int(last_run.found_count or 0) if last_run else 0,
+            "new": int(last_run.new_count or 0) if last_run else 0,
+            "matched": int(last_run.matched_count or 0) if last_run else 0,
+            "unmatched": int(last_run.unmatched_count or 0) if last_run else 0,
+            "duplicate": int(last_run.duplicate_count or 0) if last_run else 0,
+            "unparsed": int(last_run.unparsed_count or 0) if last_run else 0,
+            "ignored": int(last_run.ignored_count or 0) if last_run else 0,
+            "failed": int(last_run.failed_count or 0) if last_run else 0,
+        },
         "total_runs": total_runs,
         "failed_runs": failed_runs,
         "total_missed_windows": total_missed,

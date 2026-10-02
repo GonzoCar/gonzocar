@@ -462,8 +462,11 @@ class GenericPaymentParser:
 
             patterns = [
                 r'(?P<name>[^|<>]{2,80}?)\s+(?:sent|paid) you\s+\$?(?P<amount>[\d,]+(?:\.\d{1,2})?)',
-                r'(?:you received|payment received|received)\s+\$?(?P<amount>[\d,]+(?:\.\d{1,2})?)\s+(?:from|by)\s+(?P<name>[^|<>]{2,80}?)(?:\s+for\s+|$)',
-                r'(?P<name>[^|<>]{2,80}?)\s+(?:just )?sent you money[^$]{0,80}\$?(?P<amount>[\d,]+(?:\.\d{1,2})?)',
+                r'(?:you received|payment received|received)\s+(?:a payment of\s+)?\$?(?P<amount>[\d,]+(?:\.\d{1,2})?)\s+(?:from|by)\s+(?P<name>[^|<>]{2,80}?)(?:\s+for\s+|\s+(?:on|via)\s+|$)',
+                r'(?P<name>[^|<>]{2,80}?)\s+(?:just )?sent you money[^$]{0,120}\$?(?P<amount>[\d,]+(?:\.\d{1,2})?)',
+                r'(?:payment|transfer)\s+(?:of\s+)?\$?(?P<amount>[\d,]+(?:\.\d{1,2})?)\s+(?:from|by)\s+(?P<name>[^|<>]{2,80}?)(?:\s+(?:for|on|via)\s+|$)',
+                r'(?P<name>[^|<>]{2,80}?)\s+(?:has\s+)?sent\s+you\s+\$?(?P<amount>[\d,]+(?:\.\d{1,2})?)',
+                r'(?P<name>[^|<>]{2,80}?)\s+paid\s+you\s+(?P<amount>[\d,]+(?:\.\d{1,2})?)\s*(?:USD|dollars)?',
             ]
             match = next((re.search(p, combined, re.IGNORECASE) for p in patterns if re.search(p, combined, re.IGNORECASE)), None)
             if not match:
@@ -518,46 +521,93 @@ PARSERS = [
 ]
 
 
-def parse_email(raw_email: bytes) -> Optional[ParsedPayment]:
-    """
-    Parse a raw email (.eml) and extract payment information.
-    
-    Args:
-        raw_email: Raw email bytes (from .eml file or Gmail API)
-    
-    Returns:
-        ParsedPayment if successfully parsed, None otherwise
-    """
+def parse_email_diagnostic(raw_email: bytes, preferred_source: str | None = None) -> tuple[Optional[ParsedPayment], dict]:
+    """Parse an email and return both the payment and operational diagnostics."""
     try:
         msg = BytesParser(policy=policy.default).parsebytes(raw_email)
-        
         from_addr = msg.get('From', '')
         subject = msg.get('Subject', '')
         body = decode_email_content(msg)
-        
-        # Prefer parser selected by declared sender/subject first.
-        attempted = set()
+        lower = f"{from_addr} {subject} {body}".lower()
+
+        source_aliases = {
+            'zelle': ZelleParser,
+            'cashapp': CashAppParser,
+            'venmo': VenmoParser,
+            'chime': ChimeParser,
+            'stripe': StripeParser,
+        }
+        preferred = source_aliases.get((preferred_source or '').strip().lower())
+
+        ordered = []
+        if preferred:
+            ordered.append(preferred)
         for parser_class in PARSERS:
-            if parser_class.can_parse(from_addr, subject):
-                attempted.add(parser_class)
-                parsed = parser_class.parse(msg, body)
-                if parsed:
-                    return parsed
-        
-        # Fallback for forwarded/rewritten emails where "From" changed.
+            if parser_class not in ordered and parser_class.can_parse(from_addr, subject):
+                ordered.append(parser_class)
         for parser_class in PARSERS:
-            if parser_class in attempted:
+            if parser_class not in ordered:
+                ordered.append(parser_class)
+
+        attempted = []
+        for parser_class in ordered:
+            if parser_class is GenericPaymentParser:
                 continue
+            attempted.append(parser_class.__name__)
             parsed = parser_class.parse(msg, body)
             if parsed:
-                return parsed
-        
-        return None  # No parser matched
-        
-    except Exception as e:
-        print(f"Email parse error: {e}")
-        return None
+                return parsed, {
+                    "detected_source": parsed.source,
+                    "attempted_parsers": attempted,
+                    "payment_candidate": True,
+                    "failure_reason": None,
+                }
 
+        attempted.append(GenericPaymentParser.__name__)
+        parsed = GenericPaymentParser.parse(msg, body)
+        if parsed:
+            return parsed, {
+                "detected_source": parsed.source,
+                "attempted_parsers": attempted,
+                "payment_candidate": True,
+                "failure_reason": None,
+            }
+
+        payment_candidate = bool(
+            re.search(r'\$\s*[0-9][0-9,]*(?:\.\d{1,2})?', lower)
+            and re.search(r'payment|paid|sent|received|transfer|deposit|money', lower)
+        )
+        detected_source = None
+        for source in source_aliases:
+            if source in lower or (source == "cashapp" and ("cash app" in lower or "square" in lower)):
+                detected_source = source
+                break
+
+        reason = "no_supported_payment_pattern"
+        if payment_candidate:
+            reason = "payment_like_email_did_not_match_a_supported_template"
+        elif not re.search(r'\$\s*[0-9][0-9,]*(?:\.\d{1,2})?', lower):
+            reason = "no_currency_amount_found"
+
+        return None, {
+            "detected_source": detected_source,
+            "attempted_parsers": attempted,
+            "payment_candidate": payment_candidate,
+            "failure_reason": reason,
+        }
+    except Exception as exc:
+        return None, {
+            "detected_source": None,
+            "attempted_parsers": [],
+            "payment_candidate": True,
+            "failure_reason": f"parser_exception:{type(exc).__name__}",
+        }
+
+
+def parse_email(raw_email: bytes) -> Optional[ParsedPayment]:
+    """Parse a raw email and return only the parsed payment for backward compatibility."""
+    parsed, _ = parse_email_diagnostic(raw_email)
+    return parsed
 
 def parse_eml_file(file_path: str) -> Optional[ParsedPayment]:
     """Parse a .eml file and extract payment information."""
