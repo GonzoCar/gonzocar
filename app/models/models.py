@@ -195,6 +195,9 @@ class InboundEmail(Base):
     parse_status = Column(String(50), nullable=False, default="unprocessed")
     raw_email = Column(LargeBinary, nullable=False)
     error_message = Column(Text, nullable=True)
+    detected_source = Column(String(50), nullable=True)
+    parser_attempts = Column(Integer, nullable=False, default=0)
+    last_parsed_at = Column(DateTime, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
 
 
